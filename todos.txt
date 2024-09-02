@@ -1,0 +1,10 @@
+# functionalities
+#1. log writing -> machine.i.log
+#2. communication 
+#3. grep accumulation (powered by re) and display ->  
+# (with the appropriate line counts,
+#  i.e., number of matching lines, and file 
+# names to designate where each log entry line came from)
+#fault tolerant - stage 1 just fail stop
+#distributed unit tests
+# query patterns -> rare freuquent & somewhat frequent
