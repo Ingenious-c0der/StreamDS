@@ -7,24 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
-	//"regexp"
 )
-
-//currently using MAP directly instead map[string]
-// type MachineCliConn struct {
-// 	Name string
-// 	Conn net.Conn
-// }
-
-// func NewMachineCliConn(name string, conn net.Conn ) * MachineCliConn{
-// 	return &MachineCliConn{
-// 		Name: name ,
-// 		Conn : conn ,
-// 	}
-// }
-
-//func handleMessage(message string)
-
 // PROTO CONN EXCG <name>
 func sendNameToPeer(self_name string, conn net.Conn) {
 	communicateToPeer(conn, fmt.Sprint("CONN PEXCG ", self_name))
@@ -46,10 +29,32 @@ func printPeerList( peers *map[string]net.Conn) {
 	}
 }
 
-func handleConnection(conn net.Conn, peers *map[string]net.Conn, wg *sync.WaitGroup) {
+func runGREPLocal(pattern string) string{
+	return "output"
+}
+
+
+
+func update_grep_accumulator(accu_mu *sync.Mutex, accumulator *map[string]string, name string, result string){
+	defer accu_mu.Unlock()
+	accu_mu.Lock()
+	(*accumulator)[name] = result 
+}
+
+
+func printGREPResults(accu_results map[string]string){
+	for name, result := range accu_results{
+		fmt.Println(name, result)
+	}
+}
+
+func handleConnection(conn net.Conn, self_name string, peers *map[string]net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer conn.Close()
+	var grep_result_accumulator map[string]string
 	var mu sync.Mutex
+	var accu_mu sync.Mutex 
+	
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		msg := scanner.Text()
@@ -63,6 +68,30 @@ func handleConnection(conn net.Conn, peers *map[string]net.Conn, wg *sync.WaitGr
 			tokens := strings.Split(msg, " ")
 			name := tokens[2]
 			updatePeerList(&mu, peers, name, conn)
+		}
+		if strings.Contains(msg, "GREP PAT"){
+			tokens:= strings.Split(msg, " ")
+			pattern := tokens[2]
+			result:= runGREPLocal(pattern)
+			result = "GREP RET "+ self_name + " "+ result 
+			communicateToPeer(conn, result)
+
+			//invoke grep function here to search the file
+			//return the matches
+		}
+		if strings.Contains(msg, "GREP RET"){
+			tokens:= strings.Split(msg, " ")
+			name:= tokens[2]
+			result:= tokens[3]
+			update_grep_accumulator(&accu_mu, &grep_result_accumulator, name , result)
+			if len(grep_result_accumulator) == len(*peers)-1 {
+				//results from all other peers have accumulated successfully
+				printGREPResults(grep_result_accumulator)
+				//clear the accumulator
+				grep_result_accumulator = make(map[string]string)
+				
+			}
+			
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -90,6 +119,13 @@ func communicateToPeer(peer net.Conn, message ...string) bool {
 	return true
 }
 
+//currently used for GREP broadcast
+func multiCastMessageToPeers(peers *map[string]net.Conn, message string){
+	for _, conn := range *peers{
+		communicateToPeer(conn, message)
+	}
+}
+
 func connectToPeer(address string, self_name string, wg *sync.WaitGroup, peerList *map[string]net.Conn) (bool, net.Conn) {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
@@ -99,7 +135,7 @@ func connectToPeer(address string, self_name string, wg *sync.WaitGroup, peerLis
 
 	sendNameToPeer(self_name, conn)
 	wg.Add(1)
-	go handleConnection(conn, peerList, wg)
+	go handleConnection(conn,self_name, peerList, wg)
 	return true, conn
 }
 
@@ -120,11 +156,9 @@ func setupCommTerminal(self_name string, peers *map[string]net.Conn, wg *sync.Wa
 
 		}else if strings.Contains(message, "PRNT PLIST"){
 			printPeerList(peers)
+		}else if strings.Contains(message, "GREP"){
+			multiCastMessageToPeers(peers, message)
 		}
-
-		// else if strings.Contains(message, "GREP"){
-
-		// }
 		// else if strings.Contains(message, "EXIT"){
 		// 	fmt.Print("Closing current client")
 		// 	//close connections here
@@ -133,6 +167,7 @@ func setupCommTerminal(self_name string, peers *map[string]net.Conn, wg *sync.Wa
 	}
 }
 
+//the server component for the symmetric client, listens on the port for incoming connections
 func listenOnNetwork(port string, self_name string, peers *map[string]net.Conn, wg *sync.WaitGroup) {
 	listener, err := net.Listen("tcp", ":"+port)
 	information_string := fmt.Sprint("CONN REXCG ", self_name)
@@ -150,13 +185,13 @@ func listenOnNetwork(port string, self_name string, peers *map[string]net.Conn, 
 		}
 		fmt.Println("Connection Accepted")
 
-		succ := communicateToPeer(conn, information_string, "Error during exchanging names")
+		succ := communicateToPeer(conn, information_string, "Error occured during exchanging names")
 		if succ {
-			fmt.Println("finalizing connection")
+			fmt.Println("Finalizing connection...")
 			wg.Add(1)
-			go handleConnection(conn, peers, wg)
+			go handleConnection(conn, self_name, peers, wg)
 		} else {
-			fmt.Println("failed to exchange names, won't connect further")
+			fmt.Println("Failed to exchange names, won't try connection further")
 		}
 
 	}
