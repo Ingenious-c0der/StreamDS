@@ -61,6 +61,7 @@ func randomizer() []byte {
 }
 
 
+
 // func main() {
 // 	filepathName := "machine1.i.log"
 // 	generatedData := randomizer()
