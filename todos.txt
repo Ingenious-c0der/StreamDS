@@ -8,3 +8,4 @@
 #fault tolerant - stage 1 just fail stop
 #distributed unit tests
 # query patterns -> rare freuquent & somewhat frequent
+
