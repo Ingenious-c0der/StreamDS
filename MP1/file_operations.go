@@ -2,9 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"distributed_log_querier/grep"
+	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
+	"strings"
 )
 
 const (
@@ -60,7 +65,19 @@ func randomizer() []byte {
 	return data
 }
 
-
+func grep_command(pattern string, input io.Reader) ([]string, error) {
+	args := strings.Fields(pattern)
+	p := grep.ParseParams()
+	flag.CommandLine.Parse(args)
+	output := new(bytes.Buffer)
+	inputCloser := io.NopCloser(input)
+	cmd := grep.Command(inputCloser, output, os.Stderr, p, flag.Args())
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	results := strings.Split(strings.TrimSpace(output.String()), "\n")
+	return results, nil
+}
 
 // func main() {
 // 	filepathName := "machine1.i.log"

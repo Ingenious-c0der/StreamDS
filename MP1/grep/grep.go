@@ -21,7 +21,7 @@
 //  -r, --recursive            recursive
 //  -e, --regexp string        Pattern to match
 
-package main
+package grep
 
 import (
 	"bufio"
@@ -51,7 +51,7 @@ type grepCommand struct {
 	name string
 }
 
-func parseParams() params {
+func ParseParams() params {
 	p := params{}
 	flag.StringVarP(&p.expr, "regexp", "e", "", "Pattern to match")
 	flag.BoolVarP(&p.headers, "no-filename", "h", false, "Suppress file name prefixes on output")
@@ -70,7 +70,7 @@ func parseParams() params {
 }
 
 func main() {
-	if err := command(os.Stdin, os.Stdout, os.Stderr, parseParams(), flag.Args()).run(); err != nil {
+	if err := Command(os.Stdin, os.Stdout, os.Stderr, ParseParams(), flag.Args()).Run(); err != nil {
 		if err == errQuiet {
 			os.Exit(1)
 		}
@@ -89,7 +89,7 @@ type cmd struct {
 	showName   bool
 }
 
-func command(stdin io.ReadCloser, stdout io.Writer, stderr io.Writer, p params, args []string) *cmd {
+func Command(stdin io.ReadCloser, stdout io.Writer, stderr io.Writer, p params, args []string) *cmd {
 	return &cmd{
 		stdin:  stdin,
 		stdout: bufio.NewWriter(stdout),
@@ -168,7 +168,7 @@ func (c *cmd) printMatch(cmd *grepCommand, line string, lineNum int, match bool)
 	}
 }
 
-func (c *cmd) run() error {
+func (c *cmd) Run() error {
 	defer c.stdout.Flush()
 	// parse the expression into valid regex
 	if c.expr != "" {

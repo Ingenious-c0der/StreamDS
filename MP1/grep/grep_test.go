@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package main
+package grep
 
 import (
 	"bytes"
@@ -151,8 +151,8 @@ func TestStdinGrep(t *testing.T) {
 		t.Run(fmt.Sprintf("case_%d", idx), func(t *testing.T) {
 			var stdout bytes.Buffer
 			rc := io.NopCloser(strings.NewReader(test.input))
-			cmd := command(rc, &stdout, nil, test.p, test.args)
-			err := cmd.run()
+			cmd := Command(rc, &stdout, nil, test.p, test.args)
+			err := cmd.Run()
 			if err != test.err {
 				t.Errorf("got err %v, want %v", err, test.err)
 			}
@@ -262,8 +262,8 @@ func TestFilesGrep(t *testing.T) {
 		test := te
 		t.Run(fmt.Sprintf("case_%d", idx), func(t *testing.T) {
 			var stdout bytes.Buffer
-			cmd := command(nil, &stdout, &stdout, test.p, test.args)
-			err := cmd.run()
+			cmd := Command(nil, &stdout, &stdout, test.p, test.args)
+			err := cmd.Run()
 			if test.err == nil && err != nil {
 				t.Errorf("got %v, want nil", err)
 			} else if err != nil {
@@ -281,7 +281,7 @@ func TestFilesGrep(t *testing.T) {
 }
 
 func TestDefaultParams(t *testing.T) {
-	p := parseParams()
+	p := ParseParams()
 
 	if p.expr != "" {
 		t.Errorf("got %v, want %v", p.expr, "")
