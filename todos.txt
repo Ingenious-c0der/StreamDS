@@ -13,4 +13,5 @@
 
 # find log files online from resources for testing purposes
 # implement grep using os/exec 
+# address new line capabilties in grep command
 
