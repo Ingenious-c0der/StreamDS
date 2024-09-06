@@ -9,3 +9,8 @@
 #distributed unit tests
 # query patterns -> rare freuquent & somewhat frequent
 
+
+
+# find log files online from resources for testing purposes
+# implement grep using os/exec 
+

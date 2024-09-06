@@ -38,6 +38,7 @@ func runGREPLocal(pattern string) string {
 func update_grep_accumulator(accu_mu *sync.Mutex, accumulator *map[string]string, name string, result string) {
 	defer accu_mu.Unlock()
 	accu_mu.Lock()
+	fmt.Println("Actually updating grep accumulator", len(*accumulator))
 	(*accumulator)[name] = result
 }
 
@@ -47,66 +48,74 @@ func printGREPResults(accu_results map[string]string) {
 	}
 }
 
-func handleConnection(conn net.Conn, self_name string, peers *map[string]net.Conn, alive_peers *map[string]net.Conn, wg *sync.WaitGroup) {
+func handleConnection(conn net.Conn, self_name string, grep_result_accumulator *map[string]string, peers *map[string]net.Conn, alive_peers *map[string]net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer conn.Close()
-	grep_result_accumulator:= make( map[string]string)
+
 	var mu sync.Mutex
 	var accu_mu sync.Mutex
-	var alive_mu sync.Mutex 
+	var alive_mu sync.Mutex
+	var yam_u sync.Mutex
 	//TODO: create alive ack system
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		msg := scanner.Text()
 		fmt.Printf("Received: %s\n", msg)
-		if strings.Contains(msg, "CONN REXCG") {
-			tokens := strings.Split(msg, " ")
-			name := tokens[2]
-			updatePeerList(&mu, peers, name, conn)
-		}
-		if strings.Contains(msg, "CONN PEXCG") {
-			tokens := strings.Split(msg, " ")
-			name := tokens[2]
-			updatePeerList(&mu, peers, name, conn)
-		}
-		if strings.Contains(msg, "GREP PAT") {
-			tokens := strings.Split(msg, " ")
-			pattern := tokens[2]
-			result := runGREPLocal(pattern)
-			result = "GREP RET " + self_name + " " + result
-			communicateToPeer(conn, result)
-			//invoke grep function here to search the file
-			//return the matches
-		}
-		if strings.Contains(msg, "GREP RET") {
-			tokens := strings.Split(msg, " ")
-			name := tokens[2]
-			result := tokens[3]
-			update_grep_accumulator(&accu_mu, &grep_result_accumulator, name, result)
-			fmt.Println(len(grep_result_accumulator), len(*alive_peers), "len check")
-			if len(grep_result_accumulator) == len(*alive_peers) {
-				//results from all other peers have accumulated successfully
-				grep_result_accumulator[self_name] = runGREPLocal("pattern")
-				printGREPResults(grep_result_accumulator)
-				//clear the accumulator for the next run 
-				grep_result_accumulator = make(map[string]string)
+		go func(msg string) {
+			if strings.Contains(msg, "CONN REXCG") {
+				tokens := strings.Split(msg, " ")
+				name := tokens[2]
+				updatePeerList(&mu, peers, name, conn)
 			}
-		}
-		if strings.Contains(msg, "CONN AACK"){
-			tokens:= strings.Split(msg, " ")
-			name:= tokens[2]
-			//updating alive peers who acknowledged
-			fmt.Print("updating peer in alive list")
-			updatePeerList(&alive_mu, alive_peers, name, conn)
-			printPeerList(alive_peers)
-		}
-		if strings.Contains(msg,"CONN ALIVE"){
-			msg:= fmt.Sprint("CONN AACK ", self_name)
-			communicateToPeer(conn, msg)
-		}
-		if strings.Contains(msg, "PRNT APLIST"){
-			printPeerList(alive_peers)
-		}
+			if strings.Contains(msg, "CONN PEXCG") {
+				tokens := strings.Split(msg, " ")
+				name := tokens[2]
+				updatePeerList(&mu, peers, name, conn)
+			}
+			if strings.Contains(msg, "GREP PAT") {
+				tokens := strings.Split(msg, " ")
+				pattern := tokens[2]
+				result := runGREPLocal(pattern)
+				result = "GREP RET " + self_name + " " + result
+				communicateToPeer(conn, result)
+				//invoke grep function here to search the file
+				//return the matches
+			}
+			if strings.Contains(msg, "GREP RET") {
+				tokens := strings.Split(msg, " ")
+				name := tokens[2]
+				result := tokens[3]
+				yam_u.Lock()
+				update_grep_accumulator(&accu_mu, grep_result_accumulator, name, result)
+				yam_u.Unlock()
+				fmt.Println(len(*grep_result_accumulator), len(*alive_peers), "len check")
+				if len(*grep_result_accumulator) == len(*alive_peers) {
+					//results from all other peers have accumulated successfully
+					(*grep_result_accumulator)[self_name] = runGREPLocal("pattern")
+					printGREPResults(*grep_result_accumulator)
+					//clear the accumulator for the next run
+					accu_mu.Lock()
+					*grep_result_accumulator = (make(map[string]string))
+					accu_mu.Unlock()
+				}
+			}
+			if strings.Contains(msg, "CONN AACK") {
+				tokens := strings.Split(msg, " ")
+				name := tokens[2]
+				//updating alive peers who acknowledged
+				fmt.Print("updating peer in alive list for", name)
+
+				updatePeerList(&alive_mu, alive_peers, name, conn)
+				fmt.Printf("current alive peers len %v ", len(*alive_peers))
+			}
+			if strings.Contains(msg, "CONN ALIVE") {
+				msg := fmt.Sprint("CONN AACK ", self_name)
+				communicateToPeer(conn, msg)
+			}
+			if strings.Contains(msg, "PRNT APLIST") {
+				printPeerList(alive_peers)
+			}
+		}(msg)
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading from connection: %v\n", err)
@@ -142,7 +151,7 @@ func multiCastMessageToPeers(peers *map[string]net.Conn, message string) {
 	}
 }
 
-func connectToPeer(address string, self_name string, wg *sync.WaitGroup, peerList *map[string]net.Conn, alive_peers *map[string]net.Conn) (bool, net.Conn) {
+func connectToPeer(address string, self_name string, grep_result_accumulator *map[string]string, wg *sync.WaitGroup, peerList *map[string]net.Conn, alive_peers *map[string]net.Conn) (bool, net.Conn) {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		fmt.Printf("Error connecting to %s: %v\n", address, err)
@@ -151,11 +160,11 @@ func connectToPeer(address string, self_name string, wg *sync.WaitGroup, peerLis
 
 	sendNameToPeer(self_name, conn)
 	wg.Add(1)
-	go handleConnection(conn, self_name, peerList, alive_peers, wg)
+	go handleConnection(conn, self_name, grep_result_accumulator, peerList, alive_peers, wg)
 	return true, conn
 }
 
-func setupCommTerminal(self_name string, peers *map[string]net.Conn, alive_peers *map[string]net.Conn, wg *sync.WaitGroup) {
+func setupCommTerminal(self_name string, grep_result_accumulator *map[string]string, peers *map[string]net.Conn, alive_peers *map[string]net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -164,7 +173,7 @@ func setupCommTerminal(self_name string, peers *map[string]net.Conn, alive_peers
 		if strings.Contains(message, "CONN INIT") {
 			// CONN INIT <peer_name> <tid?>
 			tokens := strings.Fields(message)
-			if succ, conn := connectToPeer(tokens[2], self_name, wg, peers, alive_peers); succ {
+			if succ, conn := connectToPeer(tokens[2], self_name, grep_result_accumulator, wg, peers, alive_peers); succ {
 				fmt.Printf("Connected to %s - %s successfully", conn.RemoteAddr().String(), tokens[2])
 			} else {
 				fmt.Printf("Failed to connect to %s", tokens[2])
@@ -177,26 +186,29 @@ func setupCommTerminal(self_name string, peers *map[string]net.Conn, alive_peers
 			*alive_peers = make(map[string]net.Conn)
 			//checking which peers are alive at the moment
 			fmt.Print("Checking for alive peers")
-			for _, conn := range *peers{
+			for _, conn := range *peers {
 				msg := fmt.Sprint("CONN ALIVE ", self_name)
 				communicateToPeer(conn, msg)
 			}
 			//send message only to peers who acknowledged in above alive check
-			//TODO work around the delay added here 
+			//TODO work around the delay added here
 			//add a delay here to wait for all peers to respond
 			time.Sleep(2 * time.Second)
 
 			multiCastMessageToPeers(alive_peers, message)
+		} else if strings.Contains(message, "EXIT") {
+			fmt.Println("Exiting the program")
+			//close connections here
+			for _, conn := range *peers {
+				conn.Close()
+			}
+			os.Exit(0)
 		}
-		// else if strings.Contains(message, "EXIT"){
-		// 	fmt.Print("Closing current client")
-		// 	//close connections here
-		// }
 	}
 }
 
 // the server component for the symmetric client, listens on the port for incoming connections
-func listenOnNetwork(port string, self_name string, peers *map[string]net.Conn, alive_peers *map[string]net.Conn, wg *sync.WaitGroup) {
+func listenOnNetwork(port string, self_name string, grep_result_accumulator *map[string]string, peers *map[string]net.Conn, alive_peers *map[string]net.Conn, wg *sync.WaitGroup) {
 	listener, err := net.Listen("tcp", ":"+port)
 	information_string := fmt.Sprint("CONN REXCG ", self_name)
 	if err != nil {
@@ -217,7 +229,7 @@ func listenOnNetwork(port string, self_name string, peers *map[string]net.Conn, 
 		if succ {
 			fmt.Println("Finalizing connection...")
 			wg.Add(1)
-			go handleConnection(conn, self_name, peers, alive_peers, wg)
+			go handleConnection(conn, self_name, grep_result_accumulator, peers, alive_peers, wg)
 		} else {
 			fmt.Println("Failed to exchange names, won't try connection further")
 		}
@@ -230,6 +242,7 @@ func main() {
 	var wg sync.WaitGroup
 	peers := make(map[string]net.Conn)
 	alive_peers := make(map[string]net.Conn)
+	grep_result_accumulator := make(map[string]string)
 	fmt.Print("Enter the machine name : ")
 	var name string
 	fmt.Scan(&name)
@@ -237,9 +250,9 @@ func main() {
 	var port string
 	fmt.Scan(&port)
 	wg.Add(2)
-	go listenOnNetwork(port, name, &peers, &alive_peers, &wg)
+	go listenOnNetwork(port, name, &grep_result_accumulator, &peers, &alive_peers, &wg)
 	fmt.Println("here")
-	go setupCommTerminal(name, &peers, &alive_peers, &wg)
+	go setupCommTerminal(name, &grep_result_accumulator, &peers, &alive_peers, &wg)
 	// Wait for all connections to finish
 	wg.Wait()
 
