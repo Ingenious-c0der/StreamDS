@@ -11,10 +11,8 @@ import (
 	"os/exec"
 )
 func grepMain(machine_file_name string, pattern string)   string {
-	
 	pattern = pattern + " "+ machine_file_name
-	strings.ReplaceAll(pattern, "\n", "")
-	fmt.Println("Pattern to search ->", pattern)
+	pattern = strings.ReplaceAll(pattern, "\n", "")
 	cmd := exec.Command("bash", "-c", pattern)
 	op, err := cmd.CombinedOutput()
 	if err != nil {
@@ -47,6 +45,7 @@ func printPeerList(peers *map[string]net.Conn) {
 
 func runGREPLocal(self_name string,pattern string)  string {
 	machine_file_name := self_name + ".log"
+	print("Machine file name ->", machine_file_name)
 	output:= grepMain(machine_file_name, pattern)
 	return output
 }
