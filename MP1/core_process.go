@@ -5,20 +5,21 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
-	"os/exec"
 )
-func grepMain(machine_file_name string, pattern string)   string {
-	pattern = pattern + " "+ machine_file_name
+
+func grepMain(machine_file_name string, pattern string) string {
+	pattern = pattern + " " + machine_file_name
 	pattern = strings.ReplaceAll(pattern, "\n", "")
 	cmd := exec.Command("bash", "-c", pattern)
 	op, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Println("Error in grep util ->", err)
 	}
-	//convert bytes to string 
+	//convert bytes to string
 	return string(op)
 }
 
@@ -43,10 +44,9 @@ func printPeerList(peers *map[string]net.Conn) {
 	}
 }
 
-func runGREPLocal(self_name string,pattern string)  string {
+func runGREPLocal(self_name string, pattern string) string {
 	machine_file_name := self_name + ".log"
-	print("Machine file name ->", machine_file_name)
-	output:= grepMain(machine_file_name, pattern)
+	output := grepMain(machine_file_name, pattern)
 	return output
 }
 
@@ -70,7 +70,7 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, grep_res
 	var accu_mu sync.Mutex
 	var alive_mu sync.Mutex
 	var yam_u sync.Mutex
-	
+
 	//TODO: create alive ack system
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
@@ -101,7 +101,11 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, grep_res
 
 				name := tokens[2]
 				var result string
-				if len(tokens) > 3{result = tokens[3]}else{result = " empty response from machine"}
+				if len(tokens) > 3 {
+					result = strings.Join(tokens[3:], " ")
+				} else {
+					result = " empty response from machine"
+				}
 				yam_u.Lock()
 				update_grep_accumulator(&accu_mu, grep_result_accumulator, name, result)
 				yam_u.Unlock()
@@ -122,7 +126,7 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, grep_res
 				name := tokens[2]
 				//updating alive peers who acknowledged
 				updatePeerList(&alive_mu, alive_peers, name, conn)
-				
+
 			}
 			if strings.Contains(msg, "CONN ALIVE") {
 				msg := fmt.Sprint("CONN AACK ", self_name)
@@ -167,7 +171,7 @@ func multiCastMessageToPeers(peers *map[string]net.Conn, message string) {
 	}
 }
 
-func connectToPeer(pattern *string,address string, self_name string, grep_result_accumulator *map[string]string, wg *sync.WaitGroup, peerList *map[string]net.Conn, alive_peers *map[string]net.Conn) (bool, net.Conn) {
+func connectToPeer(pattern *string, address string, self_name string, grep_result_accumulator *map[string]string, wg *sync.WaitGroup, peerList *map[string]net.Conn, alive_peers *map[string]net.Conn) (bool, net.Conn) {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		fmt.Printf("Error connecting to %s: %v\n", address, err)
@@ -176,17 +180,17 @@ func connectToPeer(pattern *string,address string, self_name string, grep_result
 
 	sendNameToPeer(self_name, conn)
 	wg.Add(1)
-	go handleConnection(conn, self_name,pattern, grep_result_accumulator, peerList, alive_peers, wg)
+	go handleConnection(conn, self_name, pattern, grep_result_accumulator, peerList, alive_peers, wg)
 	return true, conn
 }
 
-func setupCommTerminal(pattern *string, self_name string, auto_addresses []string,grep_result_accumulator *map[string]string,  peers *map[string]net.Conn, alive_peers *map[string]net.Conn, wg *sync.WaitGroup) {
+func setupCommTerminal(pattern *string, self_name string, auto_addresses []string, grep_result_accumulator *map[string]string, peers *map[string]net.Conn, alive_peers *map[string]net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Println(">>> ")
 		message, _ := reader.ReadString('\n')
-		if strings.Contains(message, "CONN INIT"){
+		if strings.Contains(message, "CONN INIT") {
 			// CONN INIT <peer_name> <tid?>
 			tokens := strings.Fields(message)
 			if succ, conn := connectToPeer(pattern, tokens[2], self_name, grep_result_accumulator, wg, peers, alive_peers); succ {
@@ -198,7 +202,7 @@ func setupCommTerminal(pattern *string, self_name string, auto_addresses []strin
 		} else if strings.Contains(message, "PRNT PLIST") {
 			printPeerList(peers)
 		} else if strings.Contains(message, "GREP PAT") {
-			//store grep pattern for local search 
+			//store grep pattern for local search
 			//clear alive_peers list
 			tokens := strings.Split(message, " ")
 			*pattern = (strings.Join(tokens[2:], " "))
@@ -215,7 +219,7 @@ func setupCommTerminal(pattern *string, self_name string, auto_addresses []strin
 			time.Sleep(2 * time.Second)
 
 			multiCastMessageToPeers(alive_peers, message)
-		} else if strings.Contains(message, "CONN AUTO"){
+		} else if strings.Contains(message, "CONN AUTO") {
 			//use the auto_addresses to connect to peers
 			for _, address := range auto_addresses {
 				if succ, conn := connectToPeer(pattern, address, self_name, grep_result_accumulator, wg, peers, alive_peers); succ {
@@ -224,7 +228,7 @@ func setupCommTerminal(pattern *string, self_name string, auto_addresses []strin
 					fmt.Printf("Failed to connect to %s", address)
 				}
 			}
-		}else if strings.Contains(message, "EXIT") {
+		} else if strings.Contains(message, "EXIT") {
 			fmt.Println("Exiting the program")
 			//close connections here
 			for _, conn := range *peers {
@@ -236,7 +240,7 @@ func setupCommTerminal(pattern *string, self_name string, auto_addresses []strin
 }
 
 // the server component for the symmetric client, listens on the port for incoming connections
-func listenOnNetwork(pattern * string, port string, self_name string, grep_result_accumulator *map[string]string, peers *map[string]net.Conn, alive_peers *map[string]net.Conn, wg *sync.WaitGroup) {
+func listenOnNetwork(pattern *string, port string, self_name string, grep_result_accumulator *map[string]string, peers *map[string]net.Conn, alive_peers *map[string]net.Conn, wg *sync.WaitGroup) {
 	listener, err := net.Listen("tcp", ":"+port)
 	information_string := fmt.Sprint("CONN REXCG ", self_name)
 	if err != nil {
@@ -257,7 +261,7 @@ func listenOnNetwork(pattern * string, port string, self_name string, grep_resul
 		if succ {
 			fmt.Println("Finalizing connection...")
 			wg.Add(1)
-			go handleConnection(conn, self_name,pattern, grep_result_accumulator, peers, alive_peers, wg)
+			go handleConnection(conn, self_name, pattern, grep_result_accumulator, peers, alive_peers, wg)
 		} else {
 			fmt.Println("Failed to exchange names, won't try connection further")
 		}
@@ -268,7 +272,7 @@ func listenOnNetwork(pattern * string, port string, self_name string, grep_resul
 func main() {
 
 	var wg sync.WaitGroup
-	var pattern string 
+	var pattern string
 	peers := make(map[string]net.Conn)
 	alive_peers := make(map[string]net.Conn)
 	grep_result_accumulator := make(map[string]string)
@@ -278,15 +282,14 @@ func main() {
 	fmt.Print("Enter the machine address(port) : ")
 	var port string
 	fmt.Scan(&port)
-	 reader := bufio.NewReader(os.Stdin)
+	reader := bufio.NewReader(os.Stdin)
 
-	
 	// Prompt the user for input
 	fmt.Println("Enter auto addresses separated by spaces:")
-	
+
 	// Read a full line of input
 	input, _ := reader.ReadString('\n')
-	
+
 	// Trim any trailing newline characters
 	input = strings.TrimSpace(input)
 	// output:= grepMain(name+".log", input)
@@ -294,12 +297,12 @@ func main() {
 	// Split the input by spaces into a slice of strings
 	auto_addresses := strings.Fields(input)
 	for i, address := range auto_addresses {
-		auto_addresses[i] = strings.TrimSpace("[::]:"+address)
+		auto_addresses[i] = strings.TrimSpace("[::]:" + address)
 	}
 	fmt.Println("Auto addresses", auto_addresses)
 	wg.Add(2)
-	go listenOnNetwork(&pattern,port, name, &grep_result_accumulator, &peers, &alive_peers, &wg)
-	go setupCommTerminal(&pattern,name, auto_addresses, &grep_result_accumulator, &peers, &alive_peers, &wg)
+	go listenOnNetwork(&pattern, port, name, &grep_result_accumulator, &peers, &alive_peers, &wg)
+	go setupCommTerminal(&pattern, name, auto_addresses, &grep_result_accumulator, &peers, &alive_peers, &wg)
 	// Wait for all connections to finish
 	wg.Wait()
 
