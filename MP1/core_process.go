@@ -276,6 +276,7 @@ func main() {
 	peers := make(map[string]net.Conn)
 	alive_peers := make(map[string]net.Conn)
 	grep_result_accumulator := make(map[string]string)
+	
 	fmt.Print("Enter the machine name : ")
 	var name string
 	fmt.Scan(&name)
