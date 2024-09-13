@@ -37,6 +37,7 @@ func grepMain(machine_file_name string, pattern string) string {
 	// Get the directory of the current Go file
 	_, currentFile, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(currentFile)
+	dir = filepath.Dir(dir)
 	//special provision fnactual mainly for test suite to pass the actual filename instead of the 
 	//default machine_file_name, but can be used in general as well
 	if(strings.Contains(pattern, "fnactual")){
@@ -417,7 +418,7 @@ func main() {
 	// Split the input by spaces into a slice of strings
 	autoAddresses := strings.Fields(input)
 	for i, address := range autoAddresses {
-		autoAddresses[i] = strings.TrimSpace("[::]:" + address)
+		autoAddresses[i] = strings.TrimSpace(address)
 	}
 	fmt.Println("Auto addresses", autoAddresses)
 	peers := sync.Map{}
