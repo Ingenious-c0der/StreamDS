@@ -203,7 +203,7 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 					storage_file := self_name + ".txt"
 					_, currentFile, _, _ := runtime.Caller(0)
 					dir := filepath.Dir(currentFile)
-				
+					dir = filepath.Dir(dir)
 					// Construct the full path for the storage file
 					fullPath := filepath.Join(dir, storage_file)
 					file, err := os.Create(fullPath)
