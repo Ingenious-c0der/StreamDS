@@ -1,70 +1,24 @@
-package main
-
+package unit_tests
+//this test simply spawns NUM_INSTANCES instances and sends 
+//the grep command "grep 'DELETE'" to each instance, from each instance
 import (
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
-	"strings"
 	"time"
+	"testing"
+	"unit_tests/functions_utility"
 )
-
-func startInstance(port string, name string, autoAddresses []string) (*exec.Cmd, io.WriteCloser, error) {
-	// Construct the command to run the Go program
-	cmd := exec.Command("go", "run", "concurrent_safe_core_process_auto.go")
-
-	// Set environment variables to mock input data
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("SELF_NAME=%s", name),
-		fmt.Sprintf("PORT=%s", port),
-		fmt.Sprintf("AUTO_ADDRESSES=%s", strings.Join(autoAddresses, " ")),
-	)
-
-	// Connect stdout and stderr for logs
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	// Create a pipe to write to the process's stdin
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, nil, fmt.Errorf("error creating stdin pipe for %s: %v", name, err)
-	}
-
-	// Start the instance
-	err = cmd.Start()
-	if err != nil {
-		return nil, nil, fmt.Errorf("error starting instance %s on port %s: %v", name, port, err)
-	}
-
-	fmt.Printf("Started instance %s on port %s with PID %d\n", name, port, cmd.Process.Pid)
-
-	// Return both the command and stdin so we can send commands later
-	return cmd, stdin, nil
+func TestSpawnerFunction(t *testing.T){
+	main()
 }
-
-func sendCommand(stdin io.WriteCloser, command string) error {
-	_, err := stdin.Write([]byte(command + "\n"))
-	if err != nil {
-		return fmt.Errorf("error sending command: %v", err)
-	}
-	return nil
-}
-
-func sendExitCommand(stdin io.WriteCloser) error {
-	_, err := stdin.Write([]byte("EXIT\n"))
-	if err != nil {
-		return fmt.Errorf("error sending EXIT command: %v", err)
-	}
-	return stdin.Close() // Close stdin after sending the command
-}
-
 func main() {
 	// Define the base port and auto addresses for 10 instances
 	basePort := 8080
 	var instances []*exec.Cmd
 	var stdins []io.WriteCloser
 	
-	NUM_INSTANCES:=9
+	NUM_INSTANCES:=2
 
 	
 
@@ -79,7 +33,7 @@ func main() {
 			autoAddresses = append(autoAddresses, fmt.Sprintf("[::]:%d", basePort+j))
 			}
 		}
-		cmd, stdin, err := startInstance(port, name, autoAddresses)
+		cmd, stdin, err := functions_utility.StartInstance(port, name, autoAddresses)
 		if err != nil {
 			fmt.Println(err)
 			continue
@@ -94,7 +48,7 @@ func main() {
 	// Send CONN AUTO command to all instances
 	fmt.Println("Sending CONN AUTO command to all instances")
 	for _, stdin := range stdins {
-		err := sendCommand(stdin, "CONN AUTO")
+		err := functions_utility.SendCommand(stdin, "CONN AUTO")
 		time.Sleep(2*time.Second)
 		if err != nil {
 			fmt.Printf("Error sending CONN AUTO to process: %v\n", err)
@@ -106,7 +60,7 @@ func main() {
 	time.Sleep(5 * time.Second)
 
 	for _, stdin := range stdins {
-		err := sendCommand(stdin, "GREP PAT grep '17/Aug'")
+		err := functions_utility.SendCommand(stdin, "GREP PAT grep 'DELETE'")
 		time.Sleep(3*time.Second)
 		if err != nil {
 			fmt.Printf("Error sending GREP command to process: %v\n", err)
@@ -118,7 +72,7 @@ func main() {
 	time.Sleep(2 * time.Second)
 	// Gracefully terminate instances by sending the "EXIT" command
 	for _, stdin := range stdins {
-		err := sendExitCommand(stdin)
+		err := functions_utility.SendExitCommand(stdin)
 		if err != nil {
 			fmt.Printf("Error sending EXIT command: %v\n", err)
 		} else {
