@@ -40,7 +40,7 @@ func main() {
 	// Split the input by spaces into a slice of strings
 	autoAddresses := strings.Fields(input)
 	for i, address := range autoAddresses {
-		autoAddresses[i] = strings.TrimSpace("[::]:" + address)
+		autoAddresses[i] = strings.TrimSpace(address)
 	}
 	fmt.Println("Auto addresses", autoAddresses)
 	peers := sync.Map{}
