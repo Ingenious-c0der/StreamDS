@@ -215,7 +215,7 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 	for {
 		msg, err := readMultilineMessage(reader, "END_OF_MESSAGE") //end of file flag for (large) grep results
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Connection closed unexpectedly with " + conn.RemoteAddr().String())
+			fmt.Println(os.Stderr, "Connection closed unexpectedly with " + conn.RemoteAddr().String())
 			return
 		}
 		msg = strings.TrimRight(msg, "\n")
