@@ -215,7 +215,10 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 	for {
 		msg, err := readMultilineMessage(reader, "END_OF_MESSAGE") //end of file flag for (large) grep results
 		if err != nil {
-			fmt.Println(os.Stderr, "Connection closed unexpectedly with " + conn.RemoteAddr().String())
+			fmt.Println("Connection closed unexpectedly with " + conn.RemoteAddr().String())
+			//close conn 
+			conn.Close()
+			//remove from peers list
 			return
 		}
 		msg = strings.TrimRight(msg, "\n")
@@ -287,6 +290,9 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 						fmt.Println("Error creating file: ", err)
 					}
 					file.Write([]byte("Results for pattern: " + *pattern + "\n" + "Latency : " + latencyStr + "ms" + "\n\n"))
+					if(strings.Contains(*pattern, "-c")){
+						printGREPResults(grep_result_accumulator)
+					}
 					grep_result_accumulator.Range(func(key, value interface{}) bool {
 						name := key.(string)
 						result := value.(string)
@@ -302,7 +308,7 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 							fmt.Println(name, " : Lines Matched : ", num_matches)
 							file.Write([]byte(name + " : Lines Matched : " + strconv.Itoa(num_matches) + "\n" + result + "\n\n"))
 						} else {
-							printGREPResults(grep_result_accumulator)
+							
 							res_int, err := strconv.Atoi(result)
 							if err != nil {
 								fmt.Println("Error converting string to int")
