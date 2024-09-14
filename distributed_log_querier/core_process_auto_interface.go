@@ -1,12 +1,12 @@
 package main
 
 import (
+	"distributed_log_querier/core_process"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 	"time"
-	"distributed_log_querier/core_process"
 )
 
 func main_auto() {
@@ -31,12 +31,12 @@ func main_auto() {
 	peers := sync.Map{}
 	alive_peers := sync.Map{}
 	grep_result_accumulator := sync.Map{}
-	var latencyStart time.Time; 
+	var latencyStart time.Time
 
 	fmt.Printf("Starting instance %s on port %s\n", name, port)
 	wg.Add(2)
-	go distributed_log_querier.ListenOnNetwork(&pattern, port, name,&latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
-	go distributed_log_querier.SetupCommTerminal(&pattern, name, autoAddresses,&latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
+	go distributed_log_querier.ListenOnNetwork(&pattern, port, name, &latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
+	go distributed_log_querier.SetupCommTerminal(&pattern, name, autoAddresses, &latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
 
 	wg.Wait()
 }

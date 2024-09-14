@@ -108,7 +108,7 @@ func grepMain(machine_file_name string, pattern string) string {
 	cmd.Dir = dir                   // Set the directory for the command
 	op, err := cmd.CombinedOutput() // Run the command and get the output
 	if err != nil {
-		fmt.Println("Error in grep util, maybe the pattern was malformed ->", err)
+		fmt.Println("grep util info: the query did not match any results or was malformed ->", err)
 	}
 	// Convert bytes to string
 	//print the output of the grep command
@@ -149,7 +149,7 @@ func printPeerList(peers *sync.Map) {
 func runGREPLocal(self_name string, pattern string) string {
 	machine_file_name := self_name + ".log"
 	output := grepMain(machine_file_name, pattern)
-	
+
 	return output
 }
 
@@ -218,7 +218,7 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 		msg, err := readMultilineMessage(reader, "END_OF_MESSAGE") //end of file flag for (large) grep results
 		if err != nil {
 			fmt.Println("Connection closed unexpectedly with " + conn.RemoteAddr().String())
-			//close conn 
+			//close conn
 			conn.Close()
 			//remove from peers list
 			return
@@ -258,8 +258,9 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 				if len(tokens) > 3 {
 					result = strings.Join(tokens[3:], " ")
 				} else {
-					result = " empty response from machine"
+					result = "empty response from machine"
 				}
+
 				//store the results from all the machines in a sync map called grep_result_accumulator
 				yam_u.Lock()
 				update_grep_accumulator(&accu_mu, grep_result_accumulator, name, result)
@@ -268,9 +269,10 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 				//to know whether all the (alive) machines have responded with results, we check the length of the grep accumulator
 				// and compare it with the length of the alive peers list (1->1 mapping)
 				//if there are no alive peers then just print the local results
-				if getSyncMapLength(grep_result_accumulator) == getSyncMapLength(alive_peers) || getSyncMapLength(alive_peers) == 0 {
+				//+1 since we already have local result stored
+				if getSyncMapLength(grep_result_accumulator) == getSyncMapLength(alive_peers)+1 || getSyncMapLength(alive_peers) == 0 {
 					var total_lines int = 0
-					result := runGREPLocal(self_name, *pattern) //run the grep command locally
+
 					// Results from all other peers have accumulated successfully and the query run is done
 					latencyEnd := time.Now()
 					latency := latencyEnd.Sub(*latencyStart).Milliseconds() //latency in milliseconds
@@ -278,8 +280,6 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 
 					fmt.Println("Latency for the GREP search: (ms) ", latency)
 					fmt.Println("All results accumulated for ", *pattern)
-
-					grep_result_accumulator.Store(self_name, result)
 					// Store the results in a file with file name self_name.txt
 					storage_file := self_name + ".txt"
 					_, currentFile, _, _ := runtime.Caller(0)
@@ -292,7 +292,7 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 						fmt.Println("Error creating file: ", err)
 					}
 					file.Write([]byte("Results for pattern: " + *pattern + "\n" + "Latency : " + latencyStr + "ms" + "\n\n"))
-					if(strings.Contains(*pattern, "-c")){
+					if strings.Contains(*pattern, "-c") {
 						printGREPResults(grep_result_accumulator)
 					}
 					grep_result_accumulator.Range(func(key, value interface{}) bool {
@@ -300,20 +300,24 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 						result := value.(string)
 						if !strings.Contains(*pattern, "-c") {
 							num_matches := strings.Count(result, "\n")
+
 							if name != self_name {
 								//since the last line is trimmed of \n from the above code when it comes from other machines
 								//in msg = strings.TrimRight(msg, "\n")
-								num_matches = num_matches + 1
+
+								if num_matches != 0 {
+									num_matches = num_matches + 1
+								}
 
 							}
 							total_lines = total_lines + num_matches
 							fmt.Println(name, " : Lines Matched : ", num_matches)
 							file.Write([]byte(name + " : Lines Matched : " + strconv.Itoa(num_matches) + "\n" + result + "\n\n"))
 						} else {
-							
+
 							res_int, err := strconv.Atoi(result)
 							if err != nil {
-								fmt.Println("Error converting string to int")
+								//case that result is an empty response string
 								res_int = 0
 							}
 							total_lines = total_lines + res_int
@@ -449,10 +453,12 @@ func SetupCommTerminal(pattern *string, self_name string, auto_addresses []strin
 				communicateToPeer(conn, msg)
 				return true
 			})
-
-			// uses a static delay of 2 seconds to wait for all the peers to respond
-			// an optimized version could be to run the local grep and then wait out the next n seconds
-			// till its 2 seconds, but anyway as of now the local grep run is in ms so it should be fine
+			//run the local grep command parallely
+			go func() {
+				result_local := runGREPLocal(self_name, *pattern)
+				grep_result_accumulator.Store(self_name, result_local) // Store the result in the sync.Map
+			}()
+			// uses a static delay of 2 second to wait for all the peers to respond
 			time.Sleep(2 * time.Second)
 			// Send message only to peers who acknowledged in the above alive check
 			multiCastMessageToPeers(alive_peers, message)
@@ -551,7 +557,7 @@ func main() {
 		autoAddresses[i] = strings.TrimSpace(address)
 	}
 	fmt.Println("Auto addresses", autoAddresses)
-	
+
 	//use of sync map allows for concurrent read and write operations, unlike the regular go maps
 	// which are not thread safe. Our code qualifies for the conditions where sync maps should be used
 	// i.e a single key is written only once by independent go routines

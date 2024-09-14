@@ -60,7 +60,7 @@ func testSpawn() {
 	time.Sleep(5 * time.Second)
 
 	for _, stdin := range stdins {
-		err := functions_utility.SendCommand(stdin, "grep 'DELETE'")
+		err := functions_utility.SendCommand(stdin, "grep 'http' -i")
 		time.Sleep(3*time.Second)
 		if err != nil {
 			fmt.Printf("Error sending GREP command to process: %v\n", err)

@@ -1,12 +1,12 @@
 package main
 
 import (
+	"distributed_log_querier/functions_utility"
 	"fmt"
 	"io"
 	"os/exec"
 	"testing"
 	"time"
-	"distributed_log_querier/functions_utility"
 )
 
 func TestDifferentGrepCommands(t *testing.T) {
@@ -44,7 +44,7 @@ func diff_grep_commands(t *testing.T) {
 				autoAddresses = append(autoAddresses, auto_addresses[j-1])
 			}
 		}
-		//maybe need to actually call this from another VM. 
+		//maybe need to actually call this from another VM.
 		cmd, stdin, err := functions_utility.StartInstance(port, name, autoAddresses)
 		if err != nil {
 			t.Fatalf("Error starting instance %s: %v", name, err)
@@ -52,7 +52,6 @@ func diff_grep_commands(t *testing.T) {
 		instances = append(instances, cmd)
 		stdins = append(stdins, stdin)
 	}
-
 
 	// Wait for a while to allow processes to run and communicate
 	time.Sleep(5 * time.Second)

@@ -1,12 +1,12 @@
 package main
 
 import (
+	"distributed_log_querier/functions_utility"
 	"fmt"
 	"io"
 	"os/exec"
 	"testing"
 	"time"
-	"distributed_log_querier/functions_utility"
 )
 
 func TestGenerateLogsAndVerify(t *testing.T) {
@@ -31,7 +31,7 @@ func generate_logs_and_verify(t *testing.T) {
 		"172.22.94.94:8080",
 		"172.22.156.95:8080",
 	}
-	self_address:= "172.22.156.92:8080"
+	self_address := "172.22.156.92:8080"
 	// Start instances and collect their command and stdin references
 	for i := 1; i <= NUM_INSTANCES; i++ {
 		var autoAddresses []string
@@ -66,7 +66,7 @@ func generate_logs_and_verify(t *testing.T) {
 		}
 	}
 	time.Sleep(2 * time.Second)
-	//now the connected system is ready 
+	//now the connected system is ready
 
 	sender := stdins[0]
 	// Send the "LOG" command to the first instance
@@ -79,7 +79,7 @@ func generate_logs_and_verify(t *testing.T) {
 	// Wait for a while to allow processes to run and communicate
 	time.Sleep(2 * time.Second)
 
-	// Send the grep command to each sender now 
+	// Send the grep command to each sender now
 	command := fmt.Sprintf("grep '%s' <fnactual %s>", custom_pattern, custom_filename)
 	err_2 := functions_utility.SendCommand(sender, command)
 	if err_2 != nil {
