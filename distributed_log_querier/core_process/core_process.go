@@ -111,6 +111,8 @@ func grepMain(machine_file_name string, pattern string) string {
 		fmt.Println("Error in grep util, maybe the pattern was malformed ->", err)
 	}
 	// Convert bytes to string
+	//print the output of the grep command
+	fmt.Println(string(op))
 	return string(op)
 }
 
@@ -148,6 +150,7 @@ func printPeerList(peers *sync.Map) {
 func runGREPLocal(self_name string, pattern string) string {
 	machine_file_name := self_name + ".log"
 	output := grepMain(machine_file_name, pattern)
+	
 	return output
 }
 
