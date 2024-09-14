@@ -112,7 +112,6 @@ func grepMain(machine_file_name string, pattern string) string {
 	}
 	// Convert bytes to string
 	//print the output of the grep command
-	fmt.Println(string(op))
 	return string(op)
 }
 
