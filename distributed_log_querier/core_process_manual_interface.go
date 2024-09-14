@@ -14,7 +14,7 @@ import (
 // 	main_manual()
 // }
 
-func main {
+func main() {
 	var wg sync.WaitGroup
 	var pattern string
 
