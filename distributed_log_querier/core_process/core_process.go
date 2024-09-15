@@ -318,7 +318,7 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 
 							}
 							if num_matches == 0 {
-								if !strings.Contains(result, "empty response from machine") {
+								if !strings.Contains(result, "empty response from machine" ) && result!="" {
 									num_matches = 1
 								}
 							}
