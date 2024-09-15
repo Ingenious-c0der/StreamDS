@@ -308,15 +308,19 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 						result := value.(string)
 						if !strings.Contains(*pattern, "-c") {
 							num_matches := strings.Count(result, "\n")
-
+							
 							if name != self_name {
 								//since the last line is trimmed of \n from the above code when it comes from other machines
 								//in msg = strings.TrimRight(msg, "\n")
-
 								if num_matches != 0 {
 									num_matches = num_matches + 1
 								}
 
+							}
+							if num_matches == 0 {
+								if !strings.Contains(result, "empty response from machine") {
+									num_matches = 1
+								}
 							}
 							total_lines = total_lines + num_matches
 							fmt.Println(name, " : Lines Matched : ", num_matches)
