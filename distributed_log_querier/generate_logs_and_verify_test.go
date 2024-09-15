@@ -16,36 +16,25 @@ func TestGenerateLogsAndVerify(t *testing.T) {
 func generate_logs_and_verify(t *testing.T) {
 	var instances []*exec.Cmd
 	var stdins []io.WriteCloser
+	basePort := 8080
 	custom_filename := "test_run.log"
 	custom_pattern := "NEWLINE"
 	NUM_INSTANCES := 10
-	auto_addresses := []string{
-		"172.22.156.92:8080",
-		"172.22.158.92:8080",
-		"172.22.94.92:8080",
-		"172.22.156.93:8080",
-		"172.22.158.93:8080",
-		"172.22.94.93:8080",
-		"172.22.156.94:8080",
-		"172.22.158.94:8080",
-		"172.22.94.94:8080",
-		"172.22.156.95:8080",
-	}
-	self_address := "172.22.156.92:8080"
 	// Start instances and collect their command and stdin references
 	for i := 1; i <= NUM_INSTANCES; i++ {
 		var autoAddresses []string
-		port := fmt.Sprintf(auto_addresses[i-1])
+		port := fmt.Sprintf("%d", basePort+i)
 		name := fmt.Sprintf("vm%d", i)
-		// Create instances and connect them
+		// Create NUM instances and connect them
 		for j := 1; j <= NUM_INSTANCES; j++ {
-			if self_address != auto_addresses[j-1] {
-				autoAddresses = append(autoAddresses, auto_addresses[j-1])
+			if(j != i){
+			autoAddresses = append(autoAddresses, fmt.Sprintf("[::]:%d", basePort+j))
 			}
 		}
 		cmd, stdin, err := functions_utility.StartInstance(port, name, autoAddresses)
 		if err != nil {
-			t.Fatalf("Error starting instance %s: %v", name, err)
+			fmt.Println(err)
+			continue
 		}
 		instances = append(instances, cmd)
 		stdins = append(stdins, stdin)

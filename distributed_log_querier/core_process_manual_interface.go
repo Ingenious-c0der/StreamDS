@@ -10,11 +10,12 @@ import (
 	"time"
 )
 
-// func TestMainManual() {
-// 	main_manual()
-// }
-
-func main() {
+/*
+Unit tests do not use this main function, this is for manually spawning and using the VM 
+for the demo of the project. To make sure two main functions do not clash while running the unit tests
+change the name of this function to main_manual. 
+*/
+func main_manual() {
 	var wg sync.WaitGroup
 	var pattern string
 

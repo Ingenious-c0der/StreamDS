@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"runtime"
 )
-
+/*
+Testing over local 
+*/
 func StartInstance(port string, name string, autoAddresses []string) (*exec.Cmd, io.WriteCloser, error) {
 	// Construct the command to run the Go program
 	_, currentFile, _, _ := runtime.Caller(0)

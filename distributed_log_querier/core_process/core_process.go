@@ -64,17 +64,25 @@ func generate_test_log_file(filename string, pattern string) {
 			return
 		}
 	}
-	// write random text to the file (120 lines)
+	// write random text to the file (100 lines)
 	//now this can be actual random text instead of "Random text"
 	//but we want to avoid the edge case where the random text matches the pattern for
 	//the sake of the test
-	for i := 0; i < 120; i++ {
+	for i := 0; i < 100; i++ {
 		_, err := file.WriteString("Random text\n")
 		if err != nil {
 			fmt.Println("Error writing to file:", err)
 			return
 		}
 	}
+	for i := 0; i < 1000; i++ {
+		_, err := file.WriteString("100 200 300\n")
+		if err != nil {
+			fmt.Println("Error writing to file:", err)
+			return
+		}
+	}
+
 }
 
 /*

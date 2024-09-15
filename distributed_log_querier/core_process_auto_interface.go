@@ -8,8 +8,13 @@ import (
 	"sync"
 	"time"
 )
-
-func main_auto() {
+/*
+Important, when running unit tests make sure you are in the parent directory and
+switch the function name here from main_auto to main and change the name of main function in 
+distributed_log_querier/core_process_auto_manual.go to main_manual. As unit tests need to use main 
+function in core_process_auto_interface.go file.
+*/
+func main(){
 	var wg sync.WaitGroup
 	var pattern string
 
