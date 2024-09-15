@@ -11,8 +11,10 @@ import (
 )
 
 /*
-Unit tests do not use this main function, this is for manually spawning and using the VM. To make sure two main functions do not clash while running the unit tests
-change the name of this function to main_manual if it isn't already like that. 
+Unit tests do not use this main function nor does the demo, this is for manually spawning and using the VM. 
+To make sure two main functions do not clash while running the unit tests or demo
+change the name of this function to main_manual if it isn't already like that. This function isn't used
+in the demo or unit tests. Its just if you want an interactive way to set the params for the VM on start
 */
 func main_manual() {
 	var wg sync.WaitGroup
