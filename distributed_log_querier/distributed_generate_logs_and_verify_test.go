@@ -78,11 +78,9 @@ func distributed_generate_logs_and_verify(t *testing.T) {
 			} else {
 				fmt.Println("Sent GREP command")
 			}
+			time.Sleep(2 * time.Second)
 	}
-
-
-	// Wait for a while to allow processes to run commands and communicate
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Gracefully terminate instance by sending the "EXIT" command
 	err_exit := functions_utility.SendExitCommand(stdin)
