@@ -57,10 +57,13 @@ func diff_grep_commands(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	grep_patterns := []string{
-		"grep 'DELETE'",
-		"grep 'http'",
-		"grep 'ERROR' | grep -v 'DEBUG'",
+		"grep 'DELETE'", 
+		"grep -c 'http'", //frequent pattern
+		"grep 'ERROR' | grep -v 'DEBUG'", //pipe operator
 		"grep -E '\\b(1[0-9][0-9]|2[0-0][0-9]|[0-9]{1,2})\\.(0?[0-9]|[1-4][0-9]|50)\\.[0-9]{1,3}\\.[0-9]{1,3}\\b'",
+		"grep 'PUT'", //20% occurence 
+		"grep 'POST'",
+		"grep  -E 'Aug|Feb|Dec'",
 	}
 
 	selectedMachine := stdins[0]
