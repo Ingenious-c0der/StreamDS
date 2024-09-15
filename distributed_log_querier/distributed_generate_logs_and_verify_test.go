@@ -23,8 +23,8 @@ func distributed_generate_logs_and_verify(t *testing.T) {
 	if custom_patterns_input == "" {
 		custom_patterns = []string{"NEWLINE"}
 	}else{
-		// Split the input by spaces into a slice of strings
-		custom_patterns = strings.Fields(custom_patterns_input)
+		// Split the input by spaces into a slice of strings separated by comma
+		custom_patterns = strings.Split(custom_patterns_input, ",")
 	}
 	NUM_INSTANCES := 4 //total number of instances including the current instance
 	auto_addresses := []string{
