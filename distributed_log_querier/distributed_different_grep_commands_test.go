@@ -41,25 +41,28 @@ func distributed_diff_grep_commands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error starting instance %s: %v", self_name, err)
 	}
-	stdin.Write([]byte("CONN AUTO\n")) //connected to all the other instances 
-	time.Sleep(2 * time.Second)
+	stdin.Write([]byte("CONN AUTO\n")) //connect to all the other instances 
 
 	// Wait for a while to allow processes to run and communicate
 	time.Sleep(5 * time.Second)
 	grep_patterns := []string{
-		"grep 'DELETE'",
-		"grep 'http'",
-		"grep 'ERROR' | grep -v 'DEBUG'",
+		"grep 'DELETE'", 
+		"grep -c 'http'", //frequent pattern
+		"grep 'ERROR' | grep -v 'DEBUG'", //pipe operator
 		"grep -E '\\b(1[0-9][0-9]|2[0-0][0-9]|[0-9]{1,2})\\.(0?[0-9]|[1-4][0-9]|50)\\.[0-9]{1,3}\\.[0-9]{1,3}\\b'",
+		"grep 'PUT'", //20% occurence 
+		"grep 'POST'",
+		"grep  -E 'Aug|Feb|Dec'",
 	}
+
 	for _, pattern := range grep_patterns {
 		err := functions_utility.SendCommand(stdin, pattern)
-		time.Sleep(3 * time.Second)
 		if err != nil {
 			t.Errorf("Error sending GREP command to process: %v", err)
 		} else {
 			fmt.Println("Sent GREP command")
 		}
+		time.Sleep(5 * time.Second)
 	}
 
 	// Wait for a while to allow processes to run and communicate
