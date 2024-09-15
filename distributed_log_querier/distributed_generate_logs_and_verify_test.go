@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"os"
+   "strings"
 )
 
 func TestDistributedGenerateLogsAndVerify(t *testing.T) {
@@ -12,9 +14,18 @@ func TestDistributedGenerateLogsAndVerify(t *testing.T) {
 }
 
 func distributed_generate_logs_and_verify(t *testing.T) {
-
-	custom_filename := "test_run.log"
-	custom_pattern := "NEWLINE" //TODO: make this custom patterns 
+	var custom_patterns []string
+	custom_filename := os.Getenv("CUSTOM_FILENAME")
+	custom_patterns_input := os.Getenv("CUSTOM_PATTERNS")
+	if custom_filename == "" {
+		custom_filename = "test_run.log"
+	}
+	if custom_patterns_input == "" {
+		custom_patterns = []string{"NEWLINE"}
+	}else{
+		// Split the input by spaces into a slice of strings
+		custom_patterns = strings.Fields(custom_patterns_input)
+	}
 	NUM_INSTANCES := 4 //total number of instances including the current instance
 	auto_addresses := []string{
 		"172.22.156.92:8080",
@@ -49,7 +60,8 @@ func distributed_generate_logs_and_verify(t *testing.T) {
 
 	
 	// Send the "LOG" command to the first instance
-	err_sent := functions_utility.SendCommand(stdin, "TEST FILE "+custom_filename+" "+custom_pattern)
+	custom_gen_pattern:= custom_patterns[0] 
+	err_sent := functions_utility.SendCommand(stdin, "TEST FILE "+custom_filename+" "+custom_gen_pattern)
 	if err_sent != nil {
 		t.Errorf("Error sending LOG command: %v", err)
 	} else {
@@ -57,15 +69,18 @@ func distributed_generate_logs_and_verify(t *testing.T) {
 	}
 	// Wait for a while to allow processes to run and communicate
 	time.Sleep(2 * time.Second)
-
-	// Send the grep command to each sender now
-	command := fmt.Sprintf("grep '%s' <fnactual %s>", custom_pattern, custom_filename)
-	err_2 := functions_utility.SendCommand(stdin, command)
-	if err_2 != nil {
-		t.Errorf("Error sending GREP command: %v", err_2)
-	} else {
-		fmt.Println("Sent GREP command")
+	for _,custom_pattern := range custom_patterns{
+			// Send the grep command to each sender now
+			command := fmt.Sprintf("grep '%s' <fnactual %s>", custom_pattern, custom_filename)
+			err_2 := functions_utility.SendCommand(stdin, command)
+			if err_2 != nil {
+				t.Errorf("Error sending GREP command: %v", err_2)
+			} else {
+				fmt.Println("Sent GREP command")
+			}
 	}
+
+
 	// Wait for a while to allow processes to run commands and communicate
 	time.Sleep(3 * time.Second)
 

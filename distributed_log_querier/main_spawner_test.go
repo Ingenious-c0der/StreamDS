@@ -20,8 +20,6 @@ func testSpawn() {
 	
 	NUM_INSTANCES:=10
 
-	
-
 	// Start instances and collect their command and stdin references
 	for i := 1; i <= NUM_INSTANCES; i++ {
 		var autoAddresses []string
