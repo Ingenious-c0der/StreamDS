@@ -78,7 +78,7 @@ func distributed_generate_logs_and_verify(t *testing.T) {
 			} else {
 				fmt.Println("Sent GREP command")
 			}
-			time.Sleep(2 * time.Second)
+			time.Sleep(5 * time.Second)
 	}
 	time.Sleep(2 * time.Second)
 
