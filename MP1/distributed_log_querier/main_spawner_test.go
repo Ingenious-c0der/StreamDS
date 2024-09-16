@@ -1,4 +1,4 @@
-package unit_tests
+package main
 //this test simply spawns NUM_INSTANCES instances and sends 
 //the grep command "grep 'DELETE'" to each instance, from each instance
 import (
@@ -7,27 +7,25 @@ import (
 	"os/exec"
 	"time"
 	"testing"
-	"unit_tests/functions_utility"
+	"distributed_log_querier/functions_utility"
 )
 func TestSpawnerFunction(t *testing.T){
-	main()
+	testSpawn()
 }
-func main() {
+func testSpawn() {
 	// Define the base port and auto addresses for 10 instances
 	basePort := 8080
 	var instances []*exec.Cmd
 	var stdins []io.WriteCloser
 	
-	NUM_INSTANCES:=2
-
-	
+	NUM_INSTANCES:=10
 
 	// Start instances and collect their command and stdin references
 	for i := 1; i <= NUM_INSTANCES; i++ {
 		var autoAddresses []string
 		port := fmt.Sprintf("%d", basePort+i)
 		name := fmt.Sprintf("vm%d", i)
-		// Create 9 instances and connect them
+		// Create NUM instances and connect them
 		for j := 1; j <= NUM_INSTANCES; j++ {
 			if(j != i){
 			autoAddresses = append(autoAddresses, fmt.Sprintf("[::]:%d", basePort+j))
@@ -60,7 +58,7 @@ func main() {
 	time.Sleep(5 * time.Second)
 
 	for _, stdin := range stdins {
-		err := functions_utility.SendCommand(stdin, "GREP PAT grep 'DELETE'")
+		err := functions_utility.SendCommand(stdin, "grep 'http' -i")
 		time.Sleep(3*time.Second)
 		if err != nil {
 			fmt.Printf("Error sending GREP command to process: %v\n", err)

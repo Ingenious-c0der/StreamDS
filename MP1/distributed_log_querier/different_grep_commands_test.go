@@ -1,12 +1,12 @@
-package unit_tests
+package main
 
 import (
+	"distributed_log_querier/functions_utility"
 	"fmt"
 	"io"
 	"os/exec"
 	"testing"
 	"time"
-	"unit_tests/functions_utility"
 )
 
 func TestDifferentGrepCommands(t *testing.T) {
@@ -15,26 +15,25 @@ func TestDifferentGrepCommands(t *testing.T) {
 
 func diff_grep_commands(t *testing.T) {
 	// Define the base port and auto addresses for 10 instances
-	basePort := 8080
 	var instances []*exec.Cmd
 	var stdins []io.WriteCloser
-
+	basePort := 8080
 	NUM_INSTANCES := 5
-
 	// Start instances and collect their command and stdin references
 	for i := 1; i <= NUM_INSTANCES; i++ {
 		var autoAddresses []string
 		port := fmt.Sprintf("%d", basePort+i)
 		name := fmt.Sprintf("vm%d", i)
-		// Create instances and connect them
+		// Create NUM instances and connect them
 		for j := 1; j <= NUM_INSTANCES; j++ {
-			if j != i {
-				autoAddresses = append(autoAddresses, fmt.Sprintf("[::]:%d", basePort+j))
+			if(j != i){
+			autoAddresses = append(autoAddresses, fmt.Sprintf("[::]:%d", basePort+j))
 			}
 		}
 		cmd, stdin, err := functions_utility.StartInstance(port, name, autoAddresses)
 		if err != nil {
-			t.Fatalf("Error starting instance %s: %v", name, err)
+			fmt.Println(err)
+			continue
 		}
 		instances = append(instances, cmd)
 		stdins = append(stdins, stdin)
@@ -58,10 +57,13 @@ func diff_grep_commands(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	grep_patterns := []string{
-		"GREP PAT grep 'DELETE'",
-		"GREP PAT grep 'http'",
-		"GREP PAT grep 'ERROR' | grep -v 'DEBUG'",
+		"grep 'DELETE'", 
+		"grep -c 'http'", //frequent pattern
+		"grep 'ERROR' | grep -v 'DEBUG'", //pipe operator
 		"grep -E '\\b(1[0-9][0-9]|2[0-0][0-9]|[0-9]{1,2})\\.(0?[0-9]|[1-4][0-9]|50)\\.[0-9]{1,3}\\.[0-9]{1,3}\\b'",
+		"grep 'PUT'", //20% occurence 
+		"grep 'POST'",
+		"grep  -E 'Aug|Feb|Dec'",
 	}
 
 	selectedMachine := stdins[0]

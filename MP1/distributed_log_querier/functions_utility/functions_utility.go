@@ -6,11 +6,20 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"path/filepath"
+	"runtime"
 )
-
+/*
+Testing over local 
+*/
 func StartInstance(port string, name string, autoAddresses []string) (*exec.Cmd, io.WriteCloser, error) {
 	// Construct the command to run the Go program
-	cmd := exec.Command("go", "run", "/Users/ingenious/Desktop/Code/CS-425-MP/MP1/core_process_auto.go")
+	_, currentFile, _, _ := runtime.Caller(0)
+	dir := filepath.Dir(currentFile)
+	parentDir := filepath.Dir(dir)
+	finalPath := filepath.Join(parentDir, "core_process_auto_interface.go")
+	fmt.Println(finalPath)
+	cmd := exec.Command("go", "run", finalPath)
 
 	// Set environment variables to mock input data
 	cmd.Env = append(os.Environ(),

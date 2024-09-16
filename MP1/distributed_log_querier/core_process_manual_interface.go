@@ -1,20 +1,25 @@
-package main 
-
+package main
 
 import (
+	"bufio"
+	"distributed_log_querier/core_process"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 	"time"
-	"distributed_log_querier/core_process"
-	"bufio"
 )
 
-func main() {
+/*
+Unit tests do not use this main function nor does the demo, this is for manually spawning and using the VM. 
+To make sure two main functions do not clash while running the unit tests or demo
+change the name of this function to main_manual if it isn't already like that. This function isn't used
+in the demo or unit tests. Its just if you want an interactive way to set the params for the VM on start
+*/
+func main_manual() {
 	var wg sync.WaitGroup
 	var pattern string
-	
+
 	fmt.Print("Enter the machine name : ")
 	var name string
 	fmt.Scan(&name)
@@ -36,18 +41,18 @@ func main() {
 	// Split the input by spaces into a slice of strings
 	autoAddresses := strings.Fields(input)
 	for i, address := range autoAddresses {
-		autoAddresses[i] = strings.TrimSpace("[::]:" + address)
+		autoAddresses[i] = strings.TrimSpace(address)
 	}
 	fmt.Println("Auto addresses", autoAddresses)
 	peers := sync.Map{}
 	alive_peers := sync.Map{}
 	grep_result_accumulator := sync.Map{}
-	var latencyStart time.Time; 
+	var latencyStart time.Time
 
 	fmt.Printf("Starting instance %s on port %s\n", name, port)
 	wg.Add(2)
-	go distributed_log_querier.ListenOnNetwork(&pattern, port, name,&latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
-	go distributed_log_querier.SetupCommTerminal(&pattern, name, autoAddresses,&latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
+	go distributed_log_querier.ListenOnNetwork(&pattern, port, name, &latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
+	go distributed_log_querier.SetupCommTerminal(&pattern, name, autoAddresses, &latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
 
 	wg.Wait()
 }
