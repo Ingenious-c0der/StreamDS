@@ -123,7 +123,7 @@ PLEASE NOTE that you do not need to pass the name of the filename that is `vm1.l
 `grep 'PATTERN'` or `grep -c 'PATTERN' -i` or `grep -E ".*"`
 Now if you want to position the filename (common requirement with pipe operators), or pass a different filename (given that it exists) please read the last line of this section. 
 
-Upon the completion of the run you will see the total matching lines from each machine, Grand Total and the latency. It will not print out the output to the terminal but rather store the output of the latest grep run on `vm(i).txt` file, which can be used to see exact matching lines.  
+Upon the completion of the run you will see the total matching lines from each machine, Grand Total and the latency. It will not print out the output to the terminal but rather store the output of the latest grep run on `vm(i).txt` file, which can be used to see exact matching lines.  See some of the screenshots from our run [here]()
 The system supports every possible query with grep, but for advanced usage take a look [here](https://gitlab.engr.illinois.edu/aak14/g28#advanced-grep-usage)
 
 ### 2. Running Unit Tests (Distributed unit tests)
@@ -201,6 +201,13 @@ will translate to
 ```bash
 grep 'ERROR' test.log | grep -v 'DEBUG'
 ```
+
+
+
+#### Some screenshots of the run on 10 VMs 
+![alt text](<Pasted Graphic 5.png>)
+![alt text](<Pasted Graphic 6.png>)
+![alt text](<Pasted Graphic 7.png>)
 
 ### Looking for something else?
 Sorry! All of this documentation was hand written and we found only so much time to cover the above contents before submission deadline.
