@@ -50,7 +50,7 @@ We have two types of unit testing available based on the environment in which th
 #### 1. Unit testing in distributed environment 
 If you mean to test in a VM cluster, use the testing files starting with the word distributed which include the following, more on each one of them up ahead. (we apologize for the ugly long names)
 ##### distributed_main_spawner_test.go :
-Tests connection setup and runs one grep command
+Tests connection setup and runs one grep command (you can crash one of the vms during this test and that will serve as the fault tolerance unit test, since just by sheer logic we are sure it will work perfectly :O )
 ##### distributed_different_grep_commands_test.go :
 Tests connection setup and also different grep commands
 ##### distributed_generate_logs_and_verify_test.go :
@@ -123,7 +123,7 @@ PLEASE NOTE that you do not need to pass the name of the filename that is `vm1.l
 `grep 'PATTERN'` or `grep -c 'PATTERN' -i` or `grep -E ".*"`
 Now if you want to position the filename (common requirement with pipe operators), or pass a different filename (given that it exists) please read the last line of this section. 
 
-Upon the completion of the run you will see the total matching lines from each machine, Grand Total and the latency. It will not print out the output to the terminal but rather store the output of the latest grep run on `vm(i).txt` file, which can be used to see exact matching lines.  See some of the screenshots from our run [here]()
+Upon the completion of the run you will see the total matching lines from each machine, Grand Total and the latency. It will not print out the output to the terminal but rather store the output of the latest grep run on `vm(i).txt` file, which can be used to see exact matching lines.  See some of the screenshots from our run [here](https://gitlab.engr.illinois.edu/aak14/g28#some-screenshots-of-the-run-on-10-vms)
 The system supports every possible query with grep, but for advanced usage take a look [here](https://gitlab.engr.illinois.edu/aak14/g28#advanced-grep-usage)
 
 ### 2. Running Unit Tests (Distributed unit tests)
