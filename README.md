@@ -1,4 +1,5 @@
-# G28
+# G28 MP1 Submission
+# Distributed Log Querier 
 ## By Sagar Abhyankar (sra9) and Aditya Kulkarni (aak14)
 
 This document explains how to run all the codes, their functionality and the general structure of the directories. 
