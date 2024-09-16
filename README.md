@@ -3,16 +3,16 @@
 
 This document explains how to run all the codes, their functionality and the general structure of the directories. 
 
-At first the directory might feel a bit too messy, but its really not once you get the hang of it. Please go through to this entire document before attempting to run the code. Its not spaghetti code, its just comprehensive code with a multitude of features and no bugs! All the codes can be expected to run properly, if they don't the problem is surely how they were launched. Pretty sure we have made covefe proud! :) 
+At first the directory might feel a bit too messy, but its really not once you get the hang of it. Please go through to this entire document before attempting to run the code. Its not spaghetti code, its just comprehensive code with a multitude of features and no bugs! All the codes are expected to run properly, if they don't the problem is likely how they were launched. Pretty sure we have made covefe proud! :) 
 Anyway on to the actual explanation!
 
-##### If you are really low on time and don't want to look around how things work in the code, click here to strictly run and test the behaviors expected!
+##### If you are really low on time and don't want to look around how things work in the code, click [here](https://gitlab.engr.illinois.edu/aak14/g28/-/tree/main?ref_type=heads#1-running-and-verifying-demo) to strictly run and test the behaviors expected!
 
 ### Directory structure
 The main directory is distributed_log_querier which is also the package distributed_log_querier, and it houses 2 directories and the following files.
 #### core_process/
 This directory contains core_process.go which is the main logic of our distributed log querier system, it should not be run directly even if it contains the main() (unused) function as it only contains and exports the neccesarry library functions to interfaces.
-#### functions_utility (DO NOT RUN)
+#### functions_utility/
 This directory contains function_utility package which is a library of functions used for unit testing. 
 #### go.mod 
 This file contains all the information about the module. We used go 1.21.0 (latest 1.23.0) for compatibility with the go available on the VM
@@ -57,8 +57,8 @@ Generates custom log files on each VM and then runs the grep command to verify t
 
 
 
-###### important! Distributed tests assume that the peer VMs are already running the main program (core_process.go) with correct names and ports. Its okay if they are not connected to any other VM at the moment, since that really isn't needed to verify required behavior and pass the test. Also the addresses are hard coded for our VM cluster, but it can be easily changed by tweaking the contents of the auto_addresses list here (and similarly in other distributed unit test files). The self_address is also hard coded (the address of the VM in the cluster which will run the tests), which can also be modified here.
-Example usage of the above given tests (assuming all the other peer VMs are already running and you should be in the distributed_log_querier directory). By default the log generation and grep commands test works only on 4 VMs, which can easily be extended to more instances by modifying the NUM_INSTANCES variable found here 
+###### important! Distributed tests assume that the peer VMs are already running the main program (core_process.go) with correct names and ports. Its okay if they are not connected to any other VM at the moment, since that really isn't needed to verify required behavior and pass the test. Also the addresses are hard coded for our VM cluster, but it can be easily changed by tweaking the contents of the auto_addresses list [here](https://gitlab.engr.illinois.edu/aak14/g28/-/blob/main/distributed_log_querier/distributed_generate_logs_and_verify_test.go?ref_type=heads#L30-L41) (and similarly in other distributed unit test files). The self_address is also hard coded (the address of the VM in the cluster which will run the tests), which can also be modified [here](https://gitlab.engr.illinois.edu/aak14/g28/-/blob/main/distributed_log_querier/distributed_generate_logs_and_verify_test.go?ref_type=heads#L42).
+Example usage of the above given tests (assuming all the other peer VMs are already running and you should be in the distributed_log_querier directory). By default the log generation and grep commands test works only on 4 VMs, which can easily be extended to more instances by modifying the NUM_INSTANCES variable found [here](https://gitlab.engr.illinois.edu/aak14/g28/-/blob/main/distributed_log_querier/distributed_generate_logs_and_verify_test.go?ref_type=heads#L29) 
 
 ```bash
 
@@ -79,7 +79,7 @@ So as you can see there are two parameters for running that command, first is
 - The line `RANDOM TEXT` appears exactly 100 times
 - The line `100 200 300` appears exactly 1000 times.
 We think this is enough data to test and verify whether your grep is working accurately. 
-The code for it can be found here if you want to tweak the number of patterns or the contents of the log file. 
+The code for it can be found [here](https://gitlab.engr.illinois.edu/aak14/g28/-/blob/main/distributed_log_querier/core_process/core_process.go?ref_type=heads#L42-L84) if you want to tweak the number of patterns or the contents of the log file. 
 
 #### 2. Unit testing in local environment. 
 Don't have the time to spin up the cluster to verify behavior which can be simulated locally anyway? Well you have found the right section! These unit test files simulate the cluster environment by simply spawning new "VMs", each on a different port of the same machine. It is more comprehensive in the sense that each machine connects to every other machine from the start and you DO NOT need to have any other peers started and ready to go.
@@ -123,7 +123,7 @@ PLEASE NOTE that you do not need to pass the name of the filename that is `vm1.l
 Now if you want to position the filename (common requirement with pipe operators), or pass a different filename (given that it exists) please read the last line of this section. 
 
 Upon the completion of the run you will see the total matching lines from each machine, Grand Total and the latency. It will not print out the output to the terminal but rather store the output of the latest grep run on `vm(i).txt` file, which can be used to see exact matching lines.  
-The system supports every possible query with grep, but for advanced usage take a look here
+The system supports every possible query with grep, but for advanced usage take a look [here](https://gitlab.engr.illinois.edu/aak14/g28#advanced-grep-usage)
 
 ### 2. Running Unit Tests (Distributed unit tests)
 #### Step 1
@@ -132,7 +132,7 @@ Make sure you start all the VMs (NOT THE TESTER NODE) with the following command
 ```bash
 SELF_NAME=vm2 PORT="8080" AUTO_ADDRESSES="" go run core_process_auto_interface.go
 ```
-Make sure to change the machine name for each instance. Port can be constant. The actual address for the tester node is hard coded, and can be changed here 
+Make sure to change the machine name for each instance. Port can be constant. The actual address for the tester node is hard coded, and can be changed [here](https://gitlab.engr.illinois.edu/aak14/g28/-/blob/main/distributed_log_querier/distributed_generate_logs_and_verify_test.go?ref_type=heads#L42)
 #### Step 2
 Once all the "to be peers" to the tester nodes are up in the Listening State, we can now run the following on the "Tester" node. Similarly for the other distributed unit tests too 
 ```bash 
