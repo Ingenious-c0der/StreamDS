@@ -56,7 +56,7 @@ func testDistributedSpawn(t *testing.T) {
 	}
 
 	// Wait for a while to allow processes to run and communicate
-	time.Sleep(3 * time.Second)
+	time.Sleep(5 * time.Second)
 	// Gracefully terminate instance by sending the "EXIT" command
 	
 	err_exit := functions_utility.SendExitCommand(stdin)
