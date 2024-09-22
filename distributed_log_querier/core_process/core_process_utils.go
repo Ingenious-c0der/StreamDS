@@ -75,7 +75,7 @@ func GetRandomizedPingTargets(membershipList *sync.Map,self_hash string) ([]stri
 	fmt.Println("Randomly shuffled list:", nodes)
 	totalNodes:= len(nodes)
 	//if there are less than 3 nodes, return the list as is
-	if totalNodes<=3{
+	if totalNodes+1<=3{
 		addressList:= make([]string, 0)
 		for _, node := range nodes {
 			addressList = append(addressList, GetAddressfromHash(&node))
