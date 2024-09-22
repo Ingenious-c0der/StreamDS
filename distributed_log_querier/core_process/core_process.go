@@ -278,6 +278,7 @@ func handleConnection(conn net.Conn, self_name string, pattern *string, latencyS
 				// and compare it with the length of the alive peers list (1->1 mapping)
 				//if there are no alive peers then just print the local results
 				//+1 since we already have local result stored
+				//TODO: use latency, and after 7 seconds just print out the accumulated results anyway
 				if getSyncMapLength(grep_result_accumulator) == getSyncMapLength(alive_peers)+1 || getSyncMapLength(alive_peers) == 0 {
 					var total_lines int = 0
 
@@ -540,50 +541,50 @@ func ListenOnNetwork(pattern *string, port string, self_name string, latencyStar
 Manual main function to run the distributed log querier, the user can enter the machine name and the port
 it isn't used by external packages, but contains some comments to explain the code elsewhere
 */
-func main() {
+// func main() {
 
-	var wg sync.WaitGroup
-	var pattern string
+// 	var wg sync.WaitGroup
+// 	var pattern string
 
-	fmt.Print("Enter the machine name : ")
-	var name string
-	fmt.Scan(&name)
-	fmt.Print("Enter the machine address(port) : ")
-	var port string
-	fmt.Scan(&port)
-	reader := bufio.NewReader(os.Stdin)
+// 	fmt.Print("Enter the machine name : ")
+// 	var name string
+// 	fmt.Scan(&name)
+// 	fmt.Print("Enter the machine address(port) : ")
+// 	var port string
+// 	fmt.Scan(&port)
+// 	reader := bufio.NewReader(os.Stdin)
 
-	// Prompt the user for input
-	fmt.Println("Enter auto addresses separated by spaces:")
+// 	// Prompt the user for input
+// 	fmt.Println("Enter auto addresses separated by spaces:")
 
-	// Read a full line of input
-	input, _ := reader.ReadString('\n')
+// 	// Read a full line of input
+// 	input, _ := reader.ReadString('\n')
 
-	// Trim any trailing newline characters
-	input = strings.TrimSpace(input)
-	// output:= grepMain(name+".log", input)
-	// fmt.Println(string(output))
+// 	// Trim any trailing newline characters
+// 	input = strings.TrimSpace(input)
+// 	// output:= grepMain(name+".log", input)
+// 	// fmt.Println(string(output))
 
-	autoAddresses := strings.Fields(input) // Split the input by spaces into a slice of strings
-	for i, address := range autoAddresses {
-		autoAddresses[i] = strings.TrimSpace(address)
-	}
-	fmt.Println("Auto addresses", autoAddresses)
+// 	autoAddresses := strings.Fields(input) // Split the input by spaces into a slice of strings
+// 	for i, address := range autoAddresses {
+// 		autoAddresses[i] = strings.TrimSpace(address)
+// 	}
+// 	fmt.Println("Auto addresses", autoAddresses)
 
-	//use of sync map allows for concurrent read and write operations, unlike the regular go maps
-	// which are not thread safe. Our code qualifies for the conditions where sync maps should be used
-	// i.e a single key is written only once by independent go routines
-	//(no updates) and only multiple reads are done concurrently
-	peers := sync.Map{}
-	alive_peers := sync.Map{}
-	grep_result_accumulator := sync.Map{}
-	var latencyStart time.Time
+// 	//use of sync map allows for concurrent read and write operations, unlike the regular go maps
+// 	// which are not thread safe. Our code qualifies for the conditions where sync maps should be used
+// 	// i.e a single key is written only once by independent go routines
+// 	//(no updates) and only multiple reads are done concurrently
+// 	peers := sync.Map{}
+// 	alive_peers := sync.Map{}
+// 	grep_result_accumulator := sync.Map{}
+// 	var latencyStart time.Time
 
-	fmt.Printf("Starting instance %s on port %s\n", name, port)
-	wg.Add(2)
-	go ListenOnNetwork(&pattern, port, name, &latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
-	go SetupCommTerminal(&pattern, name, autoAddresses, &latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
+// 	fmt.Printf("Starting instance %s on port %s\n", name, port)
+// 	wg.Add(2)
+// 	go ListenOnNetwork(&pattern, port, name, &latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
+// 	go SetupCommTerminal(&pattern, name, autoAddresses, &latencyStart, &grep_result_accumulator, &peers, &alive_peers, &wg)
 
-	wg.Wait()
+// 	wg.Wait()
 
-}
+// }
