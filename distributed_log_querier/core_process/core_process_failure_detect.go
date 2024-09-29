@@ -231,6 +231,16 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, p
 		resetPeersStatus(peerList, peerStatus, peerLastPinged) // Reset the peers status
 		startPinger(peerList, peerLastPinged)                  // start a new pinger with the updated subset list
 
+	} else if strings.Contains(message, "PING") && !strings.Contains(message, "PINGACK") {
+		return_address := strings.Split(message, "$")[1]
+		//send a ping ack to the return address
+		netAddr, err := net.ResolveUDPAddr("udp", return_address)
+		if err != nil {
+			fmt.Println("Error resolving UDP address:", err)
+			return
+		}
+		communicateWithAPacketDropChance(packetDropPercentage, "PINGACK$"+self_hash+"$"+strconv.Itoa(self_incarnationNumber), netAddr)
+
 	} else if strings.Contains(message, "PINGACK") {
 		incomingPeer := strings.Split(message, "$")[1]
 		(*peerStatus).Store(incomingPeer, time.Now()) // Update the last seen time for the peer
@@ -252,16 +262,6 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, p
 				multicastUDPToPeers("UPD$ALIVE$"+incomingPeer+"$"+strconv.Itoa(peer_incarNum), subsetList)
 			}
 		}
-	} else if strings.Contains(message, "PING") && !strings.Contains(message, "PINGACK") {
-		return_address := strings.Split(message, "$")[1]
-		//send a ping ack to the return address
-		netAddr, err := net.ResolveUDPAddr("udp", return_address)
-		if err != nil {
-			fmt.Println("Error resolving UDP address:", err)
-			return
-		}
-		communicateWithAPacketDropChance(packetDropPercentage, "PINGACK$"+self_hash+"$"+strconv.Itoa(self_incarnationNumber), netAddr)
-
 	} else if strings.Contains(message, "INTROACK") {
 		introack <- true
 		tokens := strings.Split(message, " ")
@@ -469,7 +469,9 @@ func monitorPingTimeouts(mode *string, peerStatus *sync.Map, peerLastPinged *syn
 					//break out of the loop
 					return false
 				} else {
-					fmt.Println("Peer not in last pinged list : ", peer)
+					fmt.Println("Peer not in last pinged list, need to update  : ", peer)
+					//break out of the loop
+					return false
 				}
 			}
 			if lastPinged == nil {
