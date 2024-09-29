@@ -445,8 +445,14 @@ func monitorPingTimeouts(mode *string, peerStatus *sync.Map) {
 			lastSeen := value.(time.Time)
 			lastPinged,ok := peerLastPinged.Load(peer)
 			if !ok {
-				fmt.Println("Peer not found in last pinged list")
-				return true
+				_, ok2 := peerStatus.Load(peer)
+				if !ok2 {
+					fmt.Println("Reload overdue")
+					//break out of the loop
+					return false
+				}else{
+					fmt.Println("Peer not in last pinged list")
+				}
 			}
 			//convert the last pinged time to time.Time
 			lastPingedTime := lastPinged.(time.Time)
