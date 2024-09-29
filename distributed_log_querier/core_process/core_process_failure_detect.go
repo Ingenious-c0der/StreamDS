@@ -69,7 +69,7 @@ func resetPeersStatus(nodeHashList []string, peerStatus *sync.Map, peerLastPinge
 
 	// Fill both maps with the current time
 	//add 2 second to the current time to avoid immediate timeouts
-	currentTime := time.Now().Add(2 * time.Second)
+	currentTime := time.Now().Add(3500 * time.Millisecond)
 	for _, address := range nodeHashList {
 		peerStatus.Store(address, currentTime)
 		peerLastPinged.Store(address, currentTime)
