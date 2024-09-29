@@ -125,10 +125,13 @@ func GetRandomizedPingTargets(membershipList *sync.Map,self_hash string) ([]stri
 		}
 		return addressList, nodes
 	}
-	k:= (totalNodes)/2
+	k := totalNodes/2
+	if(totalNodes<=5){
+		k = totalNodes - 1
+	}
 	fmt.Println("K -> ", k)
 	//if there are more than 3 nodes, return the first k nodes
-	nodes = nodes[:k]
+	//nodes = nodes[:k]
 	addressList:= make([]string, 0)
 	for _, node := range nodes[:k] {
 		addressList = append(addressList, GetAddressfromHash(&node))
