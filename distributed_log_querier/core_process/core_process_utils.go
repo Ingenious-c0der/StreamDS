@@ -10,6 +10,7 @@ import (
 	"time"
 	"runtime"
 	"path/filepath"
+	"strconv"
 
 )
 
@@ -21,21 +22,63 @@ func GetAddressfromHash(hash *string) string {
 }
 
 //function expects the Sync.Map to be key (nodehash):string, value (status): string 
-func AddToMembershipList(membershipList *sync.Map, nodeHash string) {
-	membershipList.Store(nodeHash, "ALIVE")
+func AddToMembershipList(membershipList *sync.Map, nodeHash string, incarnationNum int) {
+	string_val := "ALIVE" + "$" + strconv.Itoa(incarnationNum)
+	membershipList.Store(nodeHash, string_val)
 }
-
-func AddToMembershipListWithStatus(membershipList *sync.Map, nodeHash string, status string) {
-	membershipList.Store(nodeHash, status)
+func AddToMembershipListWithStatus(membershipList *sync.Map, nodeHash string, status string, incarnationNum int) {
+	string_val := status + "$" + strconv.Itoa(incarnationNum)
+	fmt.Println("Adding to membership list ", string_val)
+	membershipList.Store(nodeHash, string_val)
 }
 
 func DeleteFromMembershipList(membershipList *sync.Map, nodeHash string) {
 	membershipList.Delete(nodeHash)
 }
 //used for Suspicion mechanism 
-func UpdateMembershipList(membershipList *sync.Map, nodeHash string ,status string) {
-	membershipList.Store(nodeHash, status)
+func UpdateMembershipList(membershipList *sync.Map, nodeHash string ,status string, incarnationNum int) {
+	membershipList.Store(nodeHash, status+"$"+strconv.Itoa(incarnationNum))
 }
+//returns -1 if node is not in the membership list
+func GetIncarnationNum(membershipList *sync.Map, nodeHash string) int {
+	value, ok := membershipList.Load(nodeHash)
+	if ok {
+		//fmt.Println("Value ", value)
+		tokens := strings.Split(value.(string), "$")
+		//fmt.Println("Tokens", tokens)
+		incarnationNum := tokens[1]
+		num, err:= strconv.Atoi(incarnationNum)
+		if err!=nil{
+			fmt.Println("Error converting string to int 50")
+			return -1
+		}
+		return num
+	}else {
+		return -1
+	}
+}
+
+func GetStatus(membershipList *sync.Map, nodeHash string) string {
+	value, ok := membershipList.Load(nodeHash)
+	if ok {
+		tokens := strings.Split(value.(string), "$")
+		return tokens[0]
+	}else {
+		return "DEAD"
+	}
+}
+
+func SetIncarnationNum(membershipList *sync.Map, nodeHash string, incarnationNum int) {
+	value, ok := membershipList.Load(nodeHash)
+	if ok {
+		tokens := strings.Split(value.(string), "$")
+		status := tokens[0]
+		membershipList.Store(nodeHash, status+"$"+strconv.Itoa(incarnationNum))
+	}
+}
+
+
+
 //returns a list of all the nodes in the membership list.
 //in the format [nodehash1$STATUS,nodehash2$STATUS,...]
 func GetMembershipList(membershipList *sync.Map) []string {
@@ -65,24 +108,24 @@ func GetRandomizedPingTargets(membershipList *sync.Map,self_hash string) ([]stri
 		return true
 	})
 
-	fmt.Println("Random", nodes)
+	//fmt.Println("Random", nodes)
 	//random shuffle the list
 		// Randomly shuffle the slice
 		rand.Shuffle(len(nodes), func(i, j int) {
 			nodes[i], nodes[j] = nodes[j], nodes[i]
 		})
 		// Print the randomly shuffled list
-	fmt.Println("Randomly shuffled list:", nodes)
-	totalNodes:= len(nodes)
+	//fmt.Println("Randomly shuffled list:", nodes)
+	totalNodes:= len(nodes) + 1 
 	//if there are less than 3 nodes, return the list as is
-	if totalNodes+1<=3{
+	if totalNodes<=3{
 		addressList:= make([]string, 0)
 		for _, node := range nodes {
 			addressList = append(addressList, GetAddressfromHash(&node))
 		}
 		return addressList, nodes
 	}
-	k:= (totalNodes+2)/3
+	k:= (totalNodes)/2
 	fmt.Println("K -> ", k)
 	//if there are more than 3 nodes, return the first k nodes
 	nodes = nodes[:k]

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -15,13 +16,16 @@ import (
 var membershipList sync.Map
 var subsetList []string
 var peerList []string
-var mode string = "NONSUSPECT" // specifies the mode of operation, either "SUSPECT" (suspicion mechanism) or "NONSUSPECT"
-var periodicity = 2            // specifies the periodicity of the ping messages in seconds
+var mode string // specifies the mode of operation, either "SUSPECT" (suspicion mechanism) or "NONSUSPECT"
+//var periodicity = 2            // specifies the periodicity of the ping messages in seconds
 var pingChan chan bool         // channel to stop the pinger
 var logFileName string
 var pingTimeout = time.Second * 5            // Define your timeout duration
-var peersStatus = make(map[string]time.Time) // Track when we last received a PINGACK from each peer
+var peerLastPinged sync.Map 
 var self_hash string                         //hash of the current node
+var suspectList sync.Map                     // List of suspected nodes, ONLY added if you are the owner of SUSPECTED NODE
+var self_incarnationNumber int               // Incarnation number for the current node
+var packetDropPercentage int = 0             // Percentage of packets to drop
 
 func initPingChan() {
 	if pingChan == nil {
@@ -36,10 +40,10 @@ func stopPinger() {
 	}
 }
 
-func startPinger(addresses []string) {
+func startPinger(nodeHashes []string) {
 	stopPinger() // Ensure any existing pinger is stopped
 	initPingChan()
-	go pingNodesRoundRobin(addresses, pingChan)
+	go pingNodesRoundRobin(nodeHashes, pingChan)
 }
 
 func pingNode(address string) {
@@ -52,46 +56,72 @@ func pingNode(address string) {
 	communicateUDPToPeer("PING$"+self_address, addr)
 }
 
-func resetPeersStatus(nodeHashList []string) {
-	peersStatus = make(map[string]time.Time) // Reset the peers status
-	//fill the peers status with the current time
-	for _, address := range nodeHashList {
-		peersStatus[address] = time.Now()
-	}
+func resetPeersStatus(nodeHashList []string, peerStatus *sync.Map) {
+    // Reset the peers status and last pinged status
+    *peerStatus = sync.Map{}
+    peerLastPinged = sync.Map{}
+    
+    // Fill both maps with the current time
+    for _, address := range nodeHashList {
+        currentTime := time.Now()
+        (*peerStatus).Store(address, currentTime)
+        peerLastPinged.Store(address, currentTime)
+    }
 }
 
-func pingNodesRoundRobin(addresses []string, stopPingChan chan bool) {
+func pingNodesRoundRobin(nodeHashes []string, stopPingChan chan bool) {
 
 	index := 0
 	for {
 		select {
 		case <-stopPingChan:
 			// Stop pinging when signal is received
-			fmt.Println("Stopping ping due to membership change...")
+			fmt.Println("Stopping ping due to membership change... ", time.Now().Format("15:04"))
 			return
 		default:
-			if index == len(addresses) {
-				RandomizeList(addresses)
+			if index == len(nodeHashes) {
+				
 				index = 0
+				//sleep for a while before pinging the first node'
+				//fmt.Println("Current Targets -> ", nodeHashes)
+				time.Sleep(2000 * time.Millisecond)
 			}
-
 			// Ping the current node in the list
-			if len(addresses) > 0 {
-				fmt.Println("Pinging ", addresses[index])
-				pingNode(addresses[index])
+			if len(nodeHashes) > 0 {
+				//fmt.Println("Pinging ", nodeHashes[index])
+				address:= GetAddressfromHash(&nodeHashes[index])
+				pingNode(address)
+				peerLastPinged.Store(nodeHashes[index], time.Now())
+				
+				//fmt.Println("Peer Last Pinged -> ", peerLastPinged)
 				// Move to the next node (round-robin)
-				index = (index + 1) % len(addresses)
+				index = (index + 1)
 			}
 			// Sleep for a periodicity seconds before pinging the next node
-			time.Sleep(time.Duration(periodicity) * time.Second)
+			time.Sleep(time.Millisecond * 200)
+			
 		}
 	}
 }
 
+func communicateWithAPacketDropChance(dropChance int, message string, addr *net.UDPAddr) {
+	if dropChance > 0 {
+		// Generate a random number between 0 and 99
+		randomValue := rand.Intn(100)
+
+		// If the random value is less than the drop percentage, simulate a packet drop
+		if randomValue < dropChance {
+			fmt.Println("Simulating packet drop")
+			return
+		}
+	}
+	communicateUDPToPeer(message, addr)
+}
+
 // communicateUDPToPeer sends a message to the specified peer address via UDP.
 func communicateUDPToPeer(message string, addr *net.UDPAddr, pass_self ...bool) {
-	// Resolve the UDP connection
-	
+	// Resolve the UDP connection 
+
 	if len(pass_self) > 0 {
 
 		selfAddressStr := GetAddressfromHash(&self_hash) // Assuming this returns a string like "ip:port"
@@ -114,7 +144,7 @@ func communicateUDPToPeer(message string, addr *net.UDPAddr, pass_self ...bool) 
 			return
 		}
 
-		fmt.Printf("Sent message: '%s' to %s\n", message, addr.String())
+		//fmt.Printf("Sent message: '%s' to %s\n", message, addr.String())
 	} else {
 		conn, err := net.DialUDP("udp", nil, addr)
 		if err != nil {
@@ -130,7 +160,7 @@ func communicateUDPToPeer(message string, addr *net.UDPAddr, pass_self ...bool) 
 			return
 		}
 
-		fmt.Printf("Sent message: '%s' to %s\n", message, addr.String())
+		//fmt.Printf("Sent message: '%s' to %s\n", message, addr.String())
 	}
 
 }
@@ -148,42 +178,66 @@ func multicastUDPToPeers(message string, addresses []string) {
 }
 
 // handleUDPMessage handles an incoming UDP message.
-func handleUDPMessage(message string, addr *net.UDPAddr) {
-	fmt.Printf("Received message from %s: %s\n", addr.String(), message)
+func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map) {
+	if !strings.Contains(message, "PING") && !strings.Contains(message, "PINGACK") {
+		fmt.Printf("Received message from %s: %s\n", addr.String(), message)
+	}
 	//trim message
 	message = strings.TrimSpace(message)
-	if strings.Contains(message, "INTRO") && !strings.Contains(message, "INTROACK") {
+		if strings.Contains(message, "INTRO") && !strings.Contains(message, "INTROACK") {
 		membershipData := GetMembershipList(&membershipList)
 		membershipDataJson, err := json.Marshal(membershipData)
 		if err != nil {
 			fmt.Println("Error marshalling membership list:", err)
 			return
-		}
+		} 
 		msg_string := "INTROACK " + string(membershipDataJson)
 		tokens := strings.Split(message, "$")
-		nodeHashnew := strings.Join(tokens[1:], "-")
-		fmt.Println("Node Hash New -> ", nodeHashnew)
+		nodeIncarnationNumber, err := strconv.Atoi(tokens[3])
+		if err != nil {
+			fmt.Println("Error converting string to int")
+			return
+		}
+		nodeHashnew := strings.Join(tokens[1:3], "-")
+		fmt.Println("Node Hash New + Incarnation num -> ", nodeHashnew, " ", nodeIncarnationNumber)
 		//add the new node to the membership list
-		AddToMembershipList(&membershipList, nodeHashnew)
-		fmt.Println("Should have added new node hash to membership list")
+		AddToMembershipList(&membershipList, nodeHashnew, nodeIncarnationNumber)
+		//fmt.Println("Should have added new node hash to membership list")
 		WriteLog(logFileName, "JOINED "+nodeHashnew)
 
 		//reply to the new node with the membership list
 		communicateUDPToPeer(string(msg_string), addr)
 
 		//send message to subset nodes to update their membership list
-		multicastUDPToPeers("UPD$ADD$"+nodeHashnew, subsetList)
+		multicastUDPToPeers("UPD$ADD$"+nodeHashnew+"$"+strconv.Itoa(nodeIncarnationNumber), subsetList)
 
 		//recalculate the subset list
 		subsetList, peerList = GetRandomizedPingTargets(&membershipList, self_hash)
 		stopPinger()
-		resetPeersStatus(peerList) // Reset the peers status
-		startPinger(subsetList)
+		resetPeersStatus(peerList, peerStatus) // Reset the peers status 
+		startPinger(peerList)
 
 	} else if strings.Contains(message, "PINGACK") {
 		incomingPeer := strings.Split(message, "$")[1]
-		peersStatus[incomingPeer] = time.Now() // Update the last seen time for the peer
-
+		(*peerStatus).Store(incomingPeer, time.Now()) // Update the last seen time for the peer
+		peer_incarNum, err := strconv.Atoi(strings.Split(message, "$")[2])
+		if err != nil {
+			fmt.Println("Error converting string to int")
+			return
+		}
+		//check if the incoming peer is in the suspect list
+		if mode == "SUSPECT" {
+			//check if you are the owner of the suspected node
+			_, ok := suspectList.Load(incomingPeer)
+			if ok {
+				//remove the node from the suspect list
+				suspectList.Delete(incomingPeer)
+			}
+			if GetStatus(&membershipList, incomingPeer) == "SUSPECT" {
+				UpdateMembershipList(&membershipList, incomingPeer, "ALIVE", peer_incarNum)
+				multicastUDPToPeers("UPD$ALIVE$"+incomingPeer+"$"+strconv.Itoa(peer_incarNum), subsetList)
+			}
+		}
 	} else if strings.Contains(message, "PING") && !strings.Contains(message, "PINGACK") {
 		return_address := strings.Split(message, "$")[1]
 		//send a ping ack to the return address
@@ -192,69 +246,149 @@ func handleUDPMessage(message string, addr *net.UDPAddr) {
 			fmt.Println("Error resolving UDP address:", err)
 			return
 		}
-		communicateUDPToPeer("PINGACK$"+self_hash, netAddr)
+		communicateWithAPacketDropChance(packetDropPercentage, "PINGACK$"+self_hash+"$"+strconv.Itoa(self_incarnationNumber), netAddr)
 
 	} else if strings.Contains(message, "INTROACK") {
 		tokens := strings.Split(message, " ")
 		membershipDataJson := strings.Join(tokens[1:], " ")
 		var membershipData []string
-		fmt.Println("Received Membership Data -> ", membershipDataJson)
+		
 		err := json.Unmarshal([]byte(membershipDataJson), &membershipData)
 		if err != nil {
 			fmt.Println("Error unmarshalling membership list:", err)
 			return
 		}
 		//update the membership list
-
+		fmt.Println("Received Membership Data -> ", membershipDataJson)
 		for _, nodeHash := range membershipData {
 			nodeHash = strings.TrimSpace(nodeHash)
 			fmt.Println("Node Hash -> ", nodeHash)
+			fmt.Println(strings.Split(nodeHash, "$"))
 			node_hash := strings.Split(nodeHash, "$")[0]
 			status := strings.Split(nodeHash, "$")[1]
-			AddToMembershipListWithStatus(&membershipList, node_hash, status)
+			incarnationNum, err := strconv.Atoi(strings.Split(nodeHash, "$")[2])
+			fmt.Println("Incarnation Num -> ", incarnationNum)
+			if err != nil {
+				fmt.Println("Error converting string to int")
+				return
+			}
+			AddToMembershipListWithStatus(&membershipList, node_hash, status, incarnationNum)
 		}
 		//recalculate the subset list
 		subsetList, peerList = GetRandomizedPingTargets(&membershipList, self_hash)
 		stopPinger()
-		resetPeersStatus(peerList) // Reset the peers status
-		startPinger(subsetList)
+		resetPeersStatus(peerList,peerStatus) // Reset the peers status
+		startPinger(peerList)
 	} else if strings.Contains(message, "UPD$ADD$") {
 		nodeHash := strings.Split(message, "$")[2]
+		nodeIncarNum, err := strconv.Atoi(strings.Split(message, "$")[3])
+		if err != nil {
+			fmt.Println("Error converting string to int")
+			return
+		}
 		_, ok := membershipList.Load(nodeHash)
 		if ok {
 			//do nothing to avoid echos
 		} else {
-			AddToMembershipList(&membershipList, nodeHash)
+			AddToMembershipList(&membershipList, nodeHash, nodeIncarNum)
+			//recalculate the subset list
+			
 			//get the current file path
 			WriteLog(logFileName, "JOINED "+nodeHash)
 			//multicast the message to the subset nodes
-			multicastUDPToPeers("UPD$ADD$"+nodeHash, subsetList)
-			//recalculate the subset list
+			multicastUDPToPeers("UPD$ADD$"+nodeHash+"$"+strconv.Itoa(nodeIncarNum), subsetList)
 			subsetList, peerList = GetRandomizedPingTargets(&membershipList, self_hash)
 			stopPinger()
-			resetPeersStatus(peerList) // Reset the peers status
-			startPinger(subsetList)
+			resetPeersStatus(peerList,peerStatus) // Reset the peers status
+			startPinger(peerList)
+			
 
 		}
-	} else if strings.Contains(message, "UPD$DEL$") {
+	} else if strings.Contains(message, "UPD$CONFIRM$") {
 		nodeHash := strings.Split(message, "$")[2]
 		_, ok := membershipList.Load(nodeHash)
+		//fmt.Println("Node Hash -> ", nodeHash)
+		//print ok value
+		//fmt.Println("Ok Value -> ", ok)
 		if ok {
+			//fmt.Println("Here inside UPD$CONFIRM$")
 			DeleteFromMembershipList(&membershipList, nodeHash)
-
+			//fmt.Println("Deleted from membership list")
 			WriteLog(logFileName, "CRASHED "+nodeHash)
 			//multicast the message to the subset nodes
-			multicastUDPToPeers("UPD$DEL$"+nodeHash, subsetList)
+			multicastUDPToPeers("UPD$CONFIRM$"+nodeHash, subsetList)
 			//recalculate the subset list
 			subsetList, peerList = GetRandomizedPingTargets(&membershipList, self_hash)
 			stopPinger()
-			resetPeersStatus(peerList) // Reset the peers status
-			startPinger(subsetList)
-		} else {
-			//do nothing to avoid echos
+			resetPeersStatus(peerList,peerStatus) // Reset the peers status
+			startPinger(peerList)
 		}
 	} else if strings.Contains(message, "UPD$SUS$") {
-	} else if strings.Contains(message, "UPD$NOSUS$") {
+		if mode == "SUSPECT" {
+			nodeHash := strings.Split(message, "$")[2]
+			currIncarnationNum,err1 := strconv.Atoi(strings.Split(message, "$")[3])
+			if err1 != nil {
+				fmt.Println("Error converting string to int 324")
+				return
+			}
+			if nodeHash == self_hash {
+				//if you are the node being suspected, increment your incarnation number
+				self_incarnationNumber++
+				SetIncarnationNum(&membershipList, self_hash, self_incarnationNumber)
+				//multicast the message to the subset nodes
+				multicastUDPToPeers("UPD$ALIVE$"+self_hash+"$"+strconv.Itoa(currIncarnationNum), subsetList)
+			} else {
+				//fmt.Println("Node Hash -> ", nodeHash)
+				fmt.Println("Now suspecting node -> ", nodeHash)
+				prevIncarnationNum := GetIncarnationNum(&membershipList, nodeHash)
+				if prevIncarnationNum == -1 {
+					fmt.Println("Suspected Node is not in the membership list!!")
+				} else {
+					//suspect overrides alive status only if the incarnation number is greater or equal
+					//if the node is already suspected, update the incarnation number
+					if currIncarnationNum >= prevIncarnationNum && GetStatus(&membershipList, nodeHash) == "ALIVE" {
+						UpdateMembershipList(&membershipList, nodeHash, "SUSPECT", currIncarnationNum)
+
+						//multicast the message to the subset nodes
+						multicastUDPToPeers("UPD$SUS$"+nodeHash+"$"+strconv.Itoa(currIncarnationNum), subsetList)
+					} else if currIncarnationNum > prevIncarnationNum && GetStatus(&membershipList, nodeHash) == "SUSPECT" {
+						UpdateMembershipList(&membershipList, nodeHash, "SUSPECT", currIncarnationNum)
+
+						//multicast the message to the subset nodes
+						multicastUDPToPeers("UPD$SUS$"+nodeHash+"$"+strconv.Itoa(currIncarnationNum), subsetList)
+					}
+				}
+			}
+		}
+	} else if strings.Contains(message, "UPD$ALIVE$") {
+		if mode == "SUSPECT" {
+			//parse the message
+			tokens := strings.Split(message, "$")
+			nodeHash := tokens[2]
+			currIncarnationNum, err := strconv.Atoi(tokens[3])
+			if err != nil {
+				fmt.Println("Error converting string to int")
+				return
+			}
+			prevIncarnationNum := GetIncarnationNum(&membershipList, nodeHash)
+			if prevIncarnationNum == -1 {
+				fmt.Println("Node is not in the membership list Second!!")
+			} else {
+				//alive overrides suspect status only if the incarnation number is greater
+				if currIncarnationNum > prevIncarnationNum {
+					//check if you are the owner of the suspected node
+					_, ok := suspectList.Load(nodeHash)
+					if ok {
+						//remove the node from the suspect list
+						suspectList.Delete(nodeHash)
+						//WriteLog(logFileName, "NOSUSPECT "+nodeHash)
+					}
+					UpdateMembershipList(&membershipList, nodeHash, "ALIVE", currIncarnationNum)
+					multicastUDPToPeers("UPD$ALIVE$"+nodeHash+"$"+strconv.Itoa(currIncarnationNum), subsetList)
+				}
+			}
+		}
+
 	} else if strings.Contains(message, "UPD$LEAVE$") {
 		nodeHash := strings.Split(message, "$")[2]
 		_, ok := membershipList.Load(nodeHash)
@@ -267,17 +401,15 @@ func handleUDPMessage(message string, addr *net.UDPAddr) {
 			//recalculate the subset list
 			subsetList, peerList = GetRandomizedPingTargets(&membershipList, self_hash)
 			stopPinger()
-			resetPeersStatus(peerList) // Reset the peers status
-			startPinger(subsetList)    // start a new pinger with the updated subset list
+			resetPeersStatus(peerList,peerStatus) // Reset the peers status
+			startPinger(peerList)    // start a new pinger with the updated subset list
 
-		} else {
-			//do nothing to avoid echos
 		}
 
 	}
 }
 
-func StartUDPListener(port int) {
+func StartUDPListener(port int, peerStatus *sync.Map) {
 	address := net.UDPAddr{
 		Port: port,
 		IP:   net.ParseIP("0.0.0.0"),
@@ -296,38 +428,141 @@ func StartUDPListener(port int) {
 			fmt.Printf("Error reading from UDP connection: %v", err)
 			continue
 		}
-		go handleUDPMessage(string(buf[:n]), addr)
+		go handleUDPMessage(string(buf[:n]), addr, peerStatus)
 	}
 
 }
 
 // Check for timeouts in a separate goroutine
-func monitorPingTimeouts() {
+func monitorPingTimeouts(mode *string, peerStatus *sync.Map) {
 	for {
 
 		time.Sleep(time.Second) // Check every second
-		now := time.Now()
-		for peer, lastSeen := range peersStatus {
-			fmt.Println("Diff -> ", now.Sub(lastSeen), peer)
-			if now.Sub(lastSeen) > pingTimeout {
-				fmt.Printf("Peer %s has timed out.\n", peer)
+		//fmt.Println("PeerStatusList -> ", peersStatus)
+		peerStatus.Range(func(key, value interface{}) bool {
+			//fmt.Println("Peer -> ", peer)
+			peer:= key.(string)
+			lastSeen := value.(time.Time)
+			lastPinged,ok := peerLastPinged.Load(peer)
+			if !ok {
+				fmt.Println("Peer not found in last pinged list")
+				return true
+			}
+			//convert the last pinged time to time.Time
+			lastPingedTime := lastPinged.(time.Time)
+			//now:= time.Now()
+			diff := lastSeen.Sub(lastPingedTime) 
+			if diff < 0 {
+				diff = -diff
+			}
+			//fmt.Println(peer + " Diff -> ", diff)
+		
+			if diff > pingTimeout && GetStatus(&membershipList, peer) == "ALIVE" {
 				//delete(peersStatus, peer) // Remove the peer from the list
-				if mode == "SUSPECT" {
+				fmt.Println("Current Mode -> ", *mode)
+				if (*mode) == "SUSPECT" {
+					fmt.Printf("Now suspecting Peer %s\n", peer)
+					go suspectNode(peer, peerStatus)
+					UpdateMembershipList(&membershipList, peer, "SUSPECT", GetIncarnationNum(&membershipList, peer))
+					sus_incar := GetIncarnationNum(&membershipList, peer)
+					multicastUDPToPeers("UPD$SUS$"+peer+"$"+strconv.Itoa(sus_incar), subsetList)
 				} else {
+					fmt.Printf("Peer %s has timed out.\n", peer)
 					//multicast the message to the subset nodes
 					DeleteFromMembershipList(&membershipList, peer)
-					multicastUDPToPeers("UPD$DEL$"+peer, subsetList)
+					multicastUDPToPeers("UPD$CONFIRM$"+peer, subsetList)
 					//recalculate the subset list
 					subsetList, peerList = GetRandomizedPingTargets(&membershipList, self_hash)
 					stopPinger()
-					resetPeersStatus(peerList) // Reset the peers status
-					startPinger(subsetList)    // start a new pinger with the updated subset list
-					break
+					resetPeersStatus(peerList,peerStatus) // Reset the peers status
+					startPinger(peerList)    // start a new pinger with the updated subset list
+					
 				}
 			}
-		}
+			return true
+		})
 	}
 }
+func suspectNode(nodeHash string, peerStatus *sync.Map) {
+	// Check if the node is already suspected
+	if _, alreadySuspected := suspectList.LoadOrStore(nodeHash, time.Now()); alreadySuspected {
+		return
+	}
+
+	go func() {
+		fmt.Println("Suspecting node", nodeHash)
+		time.Sleep(10 * time.Second)
+
+		// After timeout, check if the node is still suspected
+		suspectTime, exists := suspectList.Load(nodeHash)
+		if !exists {
+			// Node has been cleared from suspect list, do nothing
+			return
+		}
+		fmt.Println("Suspect time: ", suspectTime)
+		fmt.Println("Current time: ", time.Now())
+		// Check if the suspect time is older than pingTimeout
+		if time.Since(suspectTime.(time.Time)) >= pingTimeout {
+			fmt.Println("Suspected node", nodeHash, "has timed out")
+			
+			// Node is still suspected after timeout, assume it has crashed
+			DeleteFromMembershipList(&membershipList, nodeHash)
+
+			suspectList.Delete(nodeHash)
+
+			// Write to the log file
+			WriteLog(logFileName, "CRASHED "+nodeHash)
+
+			// Multicast the crash message to peers
+			multicastUDPToPeers("UPD$CONFIRM$"+nodeHash, subsetList)
+			//recalculate the subset list
+			subsetList, peerList = GetRandomizedPingTargets(&membershipList, self_hash)
+			stopPinger()
+			resetPeersStatus(peerList,peerStatus) // Reset the peers status
+			startPinger(peerList)    // start a new pinger with the updated subset list
+
+		}
+	}()
+}
+
+// Monitor suspected node for timeout
+// func suspectNode(nodeHash string) {
+// 	_, ok := suspectList.Load(nodeHash)
+// 	if ok {
+// 		// Already suspected, do nothing
+// 		return
+// 	}
+// 	// Add to suspect map
+// 	suspectList.Store(nodeHash, true)
+
+// 	// Start timeout monitoring
+// 	timeout := time.After(pingTimeout)
+// 	fmt.Println("Suspecting node ", nodeHash)
+// 	for {
+// 		select {
+// 		case <-timeout:
+// 			// Timeout expired, check if node is still suspected
+// 			_, ok = suspectList.Load(nodeHash)
+// 			if ok {
+// 				fmt.Println("Suspected node ", nodeHash, " has timed out")
+// 				// Node is still suspected, assume it has crashed
+// 				DeleteFromMembershipList(&membershipList, nodeHash)
+// 				suspectList.Delete(nodeHash)
+
+// 				// Write to the log file
+// 				WriteLog(logFileName, "CRASHED "+nodeHash)
+
+// 				// Multicast the crash message to peers
+// 				multicastUDPToPeers("UPD$CONFIRM$"+nodeHash, subsetList)
+// 			}
+// 			// Exit the loop once timeout is done
+// 			return
+// 		default:
+// 			// Keep monitoring or handling other tasks if needed
+// 			time.Sleep(time.Second)
+// 		}
+// 	}
+// }
 func SetupTerminal(wg *sync.WaitGroup) {
 	defer wg.Done()
 	reader := bufio.NewReader(os.Stdin)
@@ -344,14 +579,37 @@ func SetupTerminal(wg *sync.WaitGroup) {
 			fmt.Println("Stopped the pinger")
 			WriteLog(logFileName, "LEFT "+self_hash)
 			fmt.Print("Wrote final log. Exiting...\n")
-
-			// exit the program
 			os.Exit(0)
 		} else if strings.Contains(text, "PRNT SUBSET") {
 			fmt.Println(subsetList)
 		} else if strings.Contains(text, "PRNT MEMSET") {
 			membershipData := GetMembershipList(&membershipList)
+			fmt.Println("Total Count :", len(membershipData))
 			fmt.Println(membershipData)
+		} else if strings.Contains(text, "list_self") {
+			fmt.Println(self_hash)
+		} else if strings.Contains(text, "enable_sus") {
+			mode = "SUSPECT"
+		} else if strings.Contains(text, "disable_sus") {
+			mode = "NONSUSPECT"
+		} else if strings.Contains(text, "status_sus") {
+			fmt.Println(mode)
+		} else if strings.Contains(text, "list_sus") {
+			//iterate over membership list and print out the suspected nodes
+			membershipList.Range(func(key, value interface{}) bool {
+				// Ensure key and value are of the expected type
+				k, ok1 := key.(string)
+				v, ok2 := value.(string)
+				if ok1 && ok2 {
+					// If both key and value are strings, append the value (or key) to the nodes list
+					tokens := strings.Split(v, "$")
+					if tokens[0] == "SUSPECT" {
+						fmt.Println(k)
+					}
+				}
+				return true
+
+			})
 		}
 	}
 }
@@ -362,21 +620,23 @@ func Startup(introducer_address string, version string, port string, log_file st
 	logFileName = log_file
 
 	membershipList = sync.Map{}
-
+	self_incarnationNumber = 0
 	subsetList = make([]string, 0)
 	peerList = make([]string, 0)
+	suspectList = sync.Map{}
+	peerLastPinged = sync.Map{}
 	mode = "NONSUSPECT"
 
-	periodicity = 2
+	//periodicity = 2
 
 	pingTimeout = time.Second * 4
 
-	peersStatus = make(map[string]time.Time)
+	peerStatus := sync.Map{}
 
 	fmt.Println("Starting instance on port ", port)
 	if is_introducer {
 		self_hash = GetOutboundIP().String() + ":" + port + "-" + version
-		AddToMembershipList(&membershipList, self_hash)
+		AddToMembershipList(&membershipList, self_hash, self_incarnationNumber)
 	} else {
 		addr, err := net.ResolveUDPAddr("udp", introducer_address)
 		if err != nil {
@@ -384,9 +644,9 @@ func Startup(introducer_address string, version string, port string, log_file st
 			return
 		}
 		//send an intro message to the introducer
-		self_intro_message := "INTRO$" + GetOutboundIP().String() + ":" + port + "$" + version
+		self_intro_message := "INTRO$" + GetOutboundIP().String() + ":" + port + "$" + version + "$" + strconv.Itoa(self_incarnationNumber)
 		self_hash = GetOutboundIP().String() + ":" + port + "-" + version
-		AddToMembershipList(&membershipList, self_hash)
+		AddToMembershipList(&membershipList, self_hash, self_incarnationNumber)
 		communicateUDPToPeer(self_intro_message, addr, (true))
 	}
 	fmt.Println("Self Hash -> ", self_hash)
@@ -396,8 +656,8 @@ func Startup(introducer_address string, version string, port string, log_file st
 		fmt.Println("Error converting port to integer")
 		return
 	}
-	go StartUDPListener(port_int)
-	go monitorPingTimeouts()
+	go StartUDPListener(port_int, &peerStatus)
+	go monitorPingTimeouts(&mode, &peerStatus)
 	fmt.Println("Setup terminal")
 	wg.Done()
 }

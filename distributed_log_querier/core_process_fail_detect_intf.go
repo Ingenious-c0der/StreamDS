@@ -5,7 +5,7 @@ import (
 	"os"
 	"fmt"
 )
-func main(){
+func main(){ 
 	var wg sync.WaitGroup
 	fmt.Println("Starting the distributed log querier")
 	intro_address := os.Getenv("INTRO_ADDRESS")
