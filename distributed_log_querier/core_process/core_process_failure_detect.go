@@ -191,6 +191,7 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map) {
 			fmt.Println("Error marshalling membership list:", err)
 			return
 		} 
+	
 		msg_string := "INTROACK " + string(membershipDataJson)
 		tokens := strings.Split(message, "$")
 		nodeIncarnationNumber, err := strconv.Atoi(tokens[3])
@@ -207,7 +208,7 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map) {
 
 		//reply to the new node with the membership list
 		communicateUDPToPeer(string(msg_string), addr)
-
+		fmt.Println("Sent INTROACK message to ", addr.String())
 		//send message to subset nodes to update their membership list
 		multicastUDPToPeers("UPD$ADD$"+nodeHashnew+"$"+strconv.Itoa(nodeIncarnationNumber), subsetList)
 
