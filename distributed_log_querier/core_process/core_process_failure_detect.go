@@ -607,11 +607,17 @@ func Startup(introducer_address string, version string, port string, log_file st
 	pingTimeout = time.Second * 4
 
 	peerStatus := sync.Map{}
-
+		//start the UDP listener
+	port_int, err_int := strconv.Atoi(port)
+	if err_int != nil {
+		fmt.Println("Error converting port to integer")
+		return
+	}
 	fmt.Println("Starting instance on port ", port)
 	if is_introducer {
 		self_hash = GetOutboundIP().String() + ":" + port + "-" + version
 		AddToMembershipList(&membershipList, self_hash, self_incarnationNumber)
+		go StartUDPListener(port_int, &peerStatus)
 	} else {
 		{
 			addr, err := net.ResolveUDPAddr("udp", introducer_address)
@@ -626,10 +632,10 @@ func Startup(introducer_address string, version string, port string, log_file st
 				self_intro_message := "INTRO$" + GetOutboundIP().String() + ":" + port + "$" + version + "$" + strconv.Itoa(self_incarnationNumber)
 				self_hash = GetOutboundIP().String() + ":" + port + "-" + version
 				AddToMembershipList(&membershipList, self_hash, self_incarnationNumber)
+				go StartUDPListener(port_int, &peerStatus)
 				communicateUDPToPeer(self_intro_message, addr, true)
-	
-				// Wait for INTROACK for 2 seconds
-				timeout := time.After(2 * time.Second)
+				// Wait for INTROACK for 3 seconds
+				timeout := time.After(3 * time.Second)
 				select {
 				case <-introack: // You'll need to create this channel, set it to true when INTROACK is received
 					fmt.Println("INTROACK received, proceeding...")
@@ -647,13 +653,6 @@ func Startup(introducer_address string, version string, port string, log_file st
 		}
 	}
 	fmt.Println("Self Hash -> ", self_hash)
-	//start the UDP listener
-	port_int, err_int := strconv.Atoi(port)
-	if err_int != nil {
-		fmt.Println("Error converting port to integer")
-		return
-	}
-	go StartUDPListener(port_int, &peerStatus)
 	go monitorPingTimeouts(&mode, &peerStatus)
 	fmt.Println("Setup terminal")
 	wg.Done()
