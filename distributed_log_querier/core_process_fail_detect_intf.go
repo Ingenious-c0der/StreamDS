@@ -37,7 +37,7 @@ func main(){
 	}
 
 	go distributed_log_querier.Startup(intro_address, version, self_port, log_file_name, isintro,&wg)
-	go distributed_log_querier.SetupTerminal(&wg)	
+	//go distributed_log_querier.SetupTerminal(&wg)	
 	wg.Add(2)
 	wg.Wait()
 }
