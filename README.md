@@ -1,4 +1,4 @@
-# G28 MP1 Submission
+# G28 MP Submission
 # Distributed Log Querier 
 ## By Sagar Abhyankar (sra9) and Aditya Kulkarni (aak14)
 
@@ -7,7 +7,36 @@ This document explains how to run all the codes, their functionality and the gen
 At first the directory might feel a bit too messy, but its really not once you get the hang of it. Please go through to this entire document before attempting to run the code. Its not spaghetti code, its just comprehensive code with a multitude of features and no bugs! All the codes are expected to run properly, if they don't the problem is likely how they were launched. Pretty sure we have made covefe proud! :) 
 Anyway on to the actual explanation!
 
-##### If you are really low on time and don't want to look around how things work in the code, click [here](https://gitlab.engr.illinois.edu/aak14/g28/-/tree/main?ref_type=heads#1-running-and-verifying-demo) to strictly run and test the behaviors expected!
+## MP2 Details (SWIM For failure detection)
+
+To run the MP2, you need to run the `core_process_fail_detect_intf.go` in the `distributed_log_querier` folder, as simple as that. Use the following command.
+
+Example usage for introducer (if a node is an introducer, it doesn't care about the `INTRO_ADDRESS` param value)
+```bash
+INTRO_ADDRESS=127.0.0.1:8081 VERSION=1.0 SELF_PORT=8081 LOG_FILE_NAME=server1.log IS_INTRODUCER=True go run core_process_fail_detect_intf.go
+```
+Example usage, for non introducer nodes
+```bash
+INTRO_ADDRESS=172.22.156.92:8081 VERSION=1.0 SELF_PORT=8082 LOG_FILE_NAME=server2.log IS_INTRODUCER= go run core_process_fail_detect_intf.go
+```
+
+#### MP2 terminal commands
+
+`LEAVE` : Node leaves the group
+`PRNT SUBSET` : Node prints out the current ping targets
+`PRNT MEMSET` : Node prints out the full membership list
+`list_self` : Print out node hash of current Node (self)
+`enable_sus` : Switch operation mode to SUSPECT
+`disable_sus` : Switch operation mode to NONSUSPECT 
+`status_sus` : Prints out the current mode of operation
+`list_sus` : Prints out the list of currently suspected nodes
+
+
+
+
+### MP 1 details below
+
+##### If you are really low on time and don't want to look around how things work in the code, click [here](https://gitlab.engr.illinois.edu/aak14/g28/-/tree/main?ref_type=heads#1-running-and-verifying-demo) to strictly run and test the behaviors expected! (for MP1 only)
 
 ### Directory structure
 The main directory is distributed_log_querier which is also the package distributed_log_querier, and it houses 2 directories and the following files.
