@@ -22,13 +22,20 @@ INTRO_ADDRESS=172.22.156.92:8081 VERSION=1.0 SELF_PORT=8082 LOG_FILE_NAME=server
 
 #### MP2 terminal commands
 
-`LEAVE` : Node leaves the group
+`LEAVE` : Node leaves the group 
+
 `PRNT SUBSET` : Node prints out the current ping targets
+
 `PRNT MEMSET` : Node prints out the full membership list
+
 `list_self` : Print out node hash of current Node (self)
+
 `enable_sus` : Switch operation mode to SUSPECT
+
 `disable_sus` : Switch operation mode to NONSUSPECT 
+
 `status_sus` : Prints out the current mode of operation
+
 `list_sus` : Prints out the list of currently suspected nodes
 
 
