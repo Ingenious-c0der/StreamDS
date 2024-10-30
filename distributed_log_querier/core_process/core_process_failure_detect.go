@@ -12,20 +12,43 @@ import (
 	"sync"
 	"time"
 )
-
-
+// var byteCounter int
+// var totalBytesSent int64
+// var totalBytesReceived int64
+// var bandwidthMutex sync.Mutex
 var subsetList []string
 var peerList []string
 var mode string // specifies the mode of operation, either "SUSPECT" (suspicion mechanism) or "NONSUSPECT"
 // var periodicity = 2            // specifies the periodicity of the ping messages in seconds
 var pingChan chan bool // channel to stop the pinger
 var logFileName string
-var pingTimeout = time.Second * 5 // Define your timeout duration
+var pingTimeout time.Duration // Define your timeout duration
 var self_hash string              //hash of the current node
 var suspectList sync.Map          // List of suspected nodes, ONLY added if you are the owner of SUSPECTED NODE
-var self_incarnationNumber int    // Incarnation number for the current node
-var packetDropPercentage int = 0  // Percentage of packets to drop
+var self_incarnationNumber int   // Incarnation number for the current node
+var packetDropPercentage int = 0 // Percentage of packets to drop
 var introack chan bool
+// var lastSendTime time.Time
+// const maxBytesPerSecond = 200 // 0.15 KB/s in bytes
+// var bandwidthMutex sync.Mutex
+// var totalBytesSent int64
+// var totalBytesReceived int64
+// var byteCounter int
+// func trackBandwidth(messageSize int, isSent bool) {
+// 	bandwidthMutex.Lock()
+// 	defer bandwidthMutex.Unlock()
+// 	if isSent {
+// 		totalBytesSent += int64(messageSize)
+// 	} else {
+// 		totalBytesReceived += int64(messageSize)
+// 	}
+// }
+
+// func getBandwidthUsage() (int64, int64) {
+// 	bandwidthMutex.Lock()
+// 	defer bandwidthMutex.Unlock()
+// 	return totalBytesSent, totalBytesReceived
+// }
 
 func initPingChan() {
 	if pingChan == nil {
@@ -83,7 +106,7 @@ func pingNodesRoundRobin(nodeHashes []string, stopPingChan chan bool, peerLastPi
 		select {
 		case <-stopPingChan:
 			// Stop pinging when signal is received
-			fmt.Println("Stopping ping due to membership change... ", time.Now().Format("15:04"))
+			//fmt.Println("Stopping ping due to membership change... ", time.Now().Format("15:04"))
 			return
 		default:
 			if index == len(nodeHashes) {
@@ -116,14 +139,14 @@ func communicateWithAPacketDropChance(dropChance int, message string, addr *net.
 
 		// If the random value is less than the drop percentage, simulate a packet drop
 		if randomValue < dropChance {
-			fmt.Println("Simulating packet drop")
+			//fmt.Println("Simulating packet drop")
 			return
 		}
 	}
 	communicateUDPToPeer(message, addr)
 }
 
-// communicateUDPToPeer sends a message to the specified peer address via UDP.
+//ommunicateUDPToPeer sends a message to the specified peer address via UDP.
 func communicateUDPToPeer(message string, addr *net.UDPAddr, pass_self ...bool) {
 	// Resolve the UDP connection
 
@@ -165,10 +188,73 @@ func communicateUDPToPeer(message string, addr *net.UDPAddr, pass_self ...bool) 
 			return
 		}
 
+		//trackBandwidth(len(message), true)
+
 		//fmt.Printf("Sent message: '%s' to %s\n", message, addr.String())
 	}
 
 }
+// func communicateUDPToPeer(message string, addr *net.UDPAddr, pass_self ...bool) {
+// 	messageSize := len(message)
+// 	currentTime := time.Now()
+
+// 	// Check if we are in a new second
+// 	if currentTime.Sub(lastSendTime).Seconds() >= 1 {
+// 		// Reset the byte counter for the new second
+// 		bytesSentThisSecond = 0
+// 		lastSendTime = currentTime
+// 	}
+
+// 	// Check if sending this message would exceed the bandwidth limit
+// 	if bytesSentThisSecond+messageSize > maxBytesPerSecond {
+// 		//fmt.Printf("Skipping message to %s as bandwidth limit is reached (sent %d bytes out of %d allowed)\n",
+// 		//	addr.String(), bytesSentThisSecond, maxBytesPerSecond)
+// 		fmt.Println("Skippy")
+// 		return // Skip sending the message
+// 	}
+
+// 	// Proceed to send message if within the bandwidth limit
+// 	if len(pass_self) > 0 {
+// 		selfAddressStr := GetAddressfromHash(&self_hash)
+// 		selfAddress, err := net.ResolveUDPAddr("udp", selfAddressStr)
+// 		if err != nil {
+// 			fmt.Println("Error resolving self address:", err)
+// 			return
+// 		}
+// 		conn, err := net.DialUDP("udp", selfAddress, addr)
+// 		if err != nil {
+// 			fmt.Println("Error creating UDP connection:", err)
+// 			return
+// 		}
+// 		defer conn.Close()
+
+// 		_, err = conn.Write([]byte(message))
+// 		if err != nil {
+// 			fmt.Println("Error sending message:", err)
+// 			return
+// 		}
+// 	} else {
+// 		conn, err := net.DialUDP("udp", nil, addr)
+// 		if err != nil {
+// 			fmt.Println("Error creating UDP connection:", err)
+// 			return
+// 		}
+// 		defer conn.Close()
+
+// 		_, err = conn.Write([]byte(message))
+// 		if err != nil {
+// 			fmt.Println("Error sending message:", err)
+// 			return
+// 		}
+
+// 		trackBandwidth(messageSize, true)
+// 	}
+
+// 	// Update the bytes sent in the current second
+// 	bytesSentThisSecond += messageSize
+// 	//fmt.Printf("Sent message to %s: %d bytes (total %d bytes this second)\n",
+// 		//addr.String(), messageSize, bytesSentThisSecond)
+// }
 
 // multicastUDPToPeers sends a message to multiple peers via UDP.
 func multicastUDPToPeers(message string, addresses []string) {
@@ -181,12 +267,76 @@ func multicastUDPToPeers(message string, addresses []string) {
 		communicateUDPToPeer(message, addr)
 	}
 }
+// func communicateUDPToPeer(message string, addr *net.UDPAddr, pass_self ...bool) {
+// 	messageSize := len(message)
+// 	currentTime := time.Now()
+
+// 	// Calculate time difference since last send
+// 	timeElapsed := currentTime.Sub(lastSendTime).Seconds()
+
+// 	// Update byte counter based on time elapsed
+// 	byteCounter -= int(timeElapsed * float64(maxBytesPerSecond))
+// 	if byteCounter < 0 {
+// 		byteCounter = 0
+// 	}
+
+// 	// Check if sending this message would exceed bandwidth
+// 	if byteCounter + messageSize > maxBytesPerSecond {
+// 		// Calculate how much time we need to wait to send this message
+// 		timeToWait := float64(byteCounter+messageSize-maxBytesPerSecond) / float64(maxBytesPerSecond)
+// 		//fmt.Printf("Throttling for %.2f seconds to maintain bandwidth limit\n", timeToWait)
+// 		time.Sleep(time.Duration(timeToWait * float64(time.Second)))
+// 	}
+
+// 	// Proceed to send message after throttling (if needed)
+// 	if len(pass_self) > 0 {
+// 		selfAddressStr := GetAddressfromHash(&self_hash)
+// 		selfAddress, err := net.ResolveUDPAddr("udp", selfAddressStr)
+// 		if err != nil {
+// 			fmt.Println("Error resolving self address:", err)
+// 			return
+// 		}
+// 		conn, err := net.DialUDP("udp", selfAddress, addr)
+// 		if err != nil {
+// 			fmt.Println("Error creating UDP connection:", err)
+// 			return
+// 		}
+// 		defer conn.Close()
+
+// 		_, err = conn.Write([]byte(message))
+// 		if err != nil {
+// 			fmt.Println("Error sending message:", err)
+// 			return
+// 		}
+// 	} else {
+// 		conn, err := net.DialUDP("udp", nil, addr)
+// 		if err != nil {
+// 			fmt.Println("Error creating UDP connection:", err)
+// 			return
+// 		}
+// 		defer conn.Close()
+
+// 		_, err = conn.Write([]byte(message))
+// 		if err != nil {
+// 			fmt.Println("Error sending message:", err)
+// 			return
+// 		}
+
+// 		trackBandwidth(messageSize, true)
+// 	}
+
+// 	// Update last send time and byte counter
+// 	lastSendTime = time.Now()
+// 	byteCounter += messageSize
+// }
 
 // handleUDPMessage handles an incoming UDP message.
 func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, peerLastPinged *sync.Map, membershipList *sync.Map) {
-	if !strings.Contains(message, "PING") && !strings.Contains(message, "PINGACK") {
-		fmt.Printf("Received message from %s: %s\n", addr.String(), message)
-	}
+
+	//trackBandwidth(len(message), false)
+	// if !strings.Contains(message, "PING") && !strings.Contains(message, "PINGACK") {
+	// 	fmt.Printf("Received message from %s: %s\n", addr.String(), message)
+	// }
 	//trim message
 	message = strings.TrimSpace(message)
 	if strings.Contains(message, "INTRO") && !strings.Contains(message, "INTROACK") {
@@ -355,15 +505,18 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, p
 				}
 			} else {
 				//fmt.Println("Node Hash -> ", nodeHash)
-				
+
 				prevIncarnationNum := GetIncarnationNum(membershipList, nodeHash)
 				if prevIncarnationNum == -1 {
-					fmt.Println("Suspected Node is not in the membership list!!")
+					// fmt.Println("Suspected Node is not in the membership list!!")
+					//add the node to the membership list
+					AddToMembershipList(membershipList, nodeHash, currIncarnationNum)
+					return 
 				} else {
 					//suspect overrides alive status only if the incarnation number is greater or equal
 					//if the node is already suspected, update the incarnation number
 					if currIncarnationNum >= prevIncarnationNum && GetStatus(membershipList, nodeHash) == "ALIVE" {
-						fmt.Println("Now suspecting node -> ", nodeHash)
+						// fmt.Println("Now suspecting node -> ", nodeHash)
 						UpdateMembershipList(membershipList, nodeHash, "SUSPECT", currIncarnationNum)
 
 						//multicast the message to the subset nodes
@@ -389,7 +542,10 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, p
 			}
 			prevIncarnationNum := GetIncarnationNum(membershipList, nodeHash)
 			if prevIncarnationNum == -1 {
-				fmt.Println("Node is not in the membership list Second!!")
+				//fmt.Println("Node is not in the membership list Second!!")
+				//add the node to the membership list
+				AddToMembershipList(membershipList, nodeHash, currIncarnationNum)
+				return
 			} else {
 				//alive overrides suspect status only if the incarnation number is greater
 				if currIncarnationNum > prevIncarnationNum {
@@ -497,10 +653,13 @@ func monitorPingTimeouts(mode *string, peerStatus *sync.Map, peerLastPinged *syn
 					sus_incar := GetIncarnationNum(membershipList, peer)
 					multicastUDPToPeers("UPD$SUS$"+peer+"$"+strconv.Itoa(sus_incar), subsetList)
 				} else {
-					fmt.Printf("Peer %s has timed out.\n", peer)
+
 					//multicast the message to the subset nodes
 					DeleteFromMembershipList(membershipList, peer)
+					//fmt.Println(peer)
+					fmt.Println("Tcleanup time: " + peer +" "+  time.Now().Format("15:04:05"))
 					multicastUDPToPeers("UPD$CONFIRM$"+peer, subsetList)
+					
 					//recalculate the subset list
 					subsetList, peerList = GetRandomizedPingTargets(membershipList, self_hash)
 					stopPinger()
@@ -528,11 +687,11 @@ func suspectNode(nodeHash string, peerStatus *sync.Map, peerLastPinged *sync.Map
 			// Node has been cleared from suspect list, do nothing
 			return
 		}
-		fmt.Println("Suspect time: ", suspectTime)
-		fmt.Println("Current time: ", time.Now())
+		//fmt.Println("Suspect time: ", suspectTime)
+		//fmt.Println("Current time: ", time.Now())
 		// Check if the suspect time is older than pingTimeout
 		if time.Since(suspectTime.(time.Time)) >= pingTimeout {
-			fmt.Println("Suspected node", nodeHash, "has timed out")
+			//fmt.Println("Suspected node", nodeHash, "has timed out")
 
 			// Node is still suspected after timeout, assume it has crashed
 			DeleteFromMembershipList(membershipList, nodeHash)
@@ -543,7 +702,10 @@ func suspectNode(nodeHash string, peerStatus *sync.Map, peerLastPinged *sync.Map
 			WriteLog(logFileName, "CRASHED "+nodeHash)
 
 			// Multicast the crash message to peers
+			fmt.Println("Tcleanup time: " + nodeHash +" "+  time.Now().Format("15:04:05"))
 			multicastUDPToPeers("UPD$CONFIRM$"+nodeHash, subsetList)
+			//print total time passed 
+			
 			//recalculate the subset list
 			subsetList, peerList = GetRandomizedPingTargets(membershipList, self_hash)
 			stopPinger()
@@ -553,6 +715,40 @@ func suspectNode(nodeHash string, peerStatus *sync.Map, peerLastPinged *sync.Map
 		}
 	}()
 }
+//used only for testing
+// func reportBandwidth() {
+// 	var sent, received int64
+// 	var lastSent, lastReceived int64
+// 	n:=0
+// 	for {
+// 		lastSent, lastReceived = sent, received
+// 		time.Sleep(10 * time.Second)
+// 		n+=1
+// 		if(n==11){
+// 			return
+// 		}
+// 		//fmt.Println("Last Sent: ", lastSent, " Last Received: ", lastReceived)
+// 		// Update current bandwidth usage
+// 		sent, received = getBandwidthUsage()
+// 		//fmt.Println("Current Sent: ", sent, " Current Received: ", received)
+// 		// Calculate and display B/s
+// 		fmt.Printf("%d: %d\n", n ,((sent-lastSent)/10+ (received-lastReceived)/10))
+// 	}
+// }
+
+// func writeMemset(membershipList *sync.Map) {
+// 	x := 0
+// 	for {
+// 		time.Sleep(1 * time.Second)
+// 		//print the count of the membership list
+// 		x += 1
+// 		membershipData := GetMembershipList(membershipList)
+// 		fmt.Println("Total Count : ", x, " ", len(membershipData))
+// 		if x == 15 {
+// 			return
+// 		}
+// 	}
+// }
 
 func SetupTerminal(wg *sync.WaitGroup, membershipList *sync.Map) {
 	defer wg.Done()
@@ -625,7 +821,7 @@ func Startup(introducer_address string, version string, port string, log_file st
 
 	//periodicity = 2
 
-	pingTimeout = time.Second * 4
+	pingTimeout = time.Second * 5
 
 	peerStatus := sync.Map{}
 	//start the UDP listener
@@ -678,6 +874,10 @@ func Startup(introducer_address string, version string, port string, log_file st
 	fmt.Println("Self Hash -> ", self_hash)
 	go monitorPingTimeouts(&mode, &peerStatus, &peerLastPinged, &membershipList)
 	go SetupTerminal(wg, &membershipList)
+	//go reportBandwidth()
+	//run the following after 20 seconds
+	//time.Sleep(15 * time.Second)
+	//go writeMemset(&membershipList)
 	fmt.Println("Setup terminal")
 	wg.Done()
 }

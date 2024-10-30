@@ -1,3 +1,4 @@
+// +build main1
 package main 
 import (
 	"distributed_log_querier/core_process"
