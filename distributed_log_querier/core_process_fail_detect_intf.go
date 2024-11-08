@@ -1,10 +1,14 @@
+//go:build main1
 // +build main1
-package main 
+
+package main
+
 import (
 	"distributed_log_querier/core_process"
-	"sync"
-	"os"
 	"fmt"
+	"os"
+	"strconv"
+	"sync"
 )
 func main(){ 
 	var wg sync.WaitGroup
@@ -36,9 +40,31 @@ func main(){
 	}else{
 		isintro = true
 	}
-
-	go distributed_log_querier.Startup(intro_address, version, self_port, log_file_name, isintro,&wg)
+	//establish the connection with hydfs layer using self pipe using safe conn 
+	selfHYDFSPort := subtractStrings(self_port, 3030)
+	if selfHYDFSPort == "" {
+		fmt.Println("Error in substracting strings")
+		return
+	}
+	safeConn := distributed_log_querier.StartSelfPipeHYDFS(selfHYDFSPort)
+	if safeConn == nil {
+		fmt.Println("Error in starting self pipe")
+		return
+	}
+	go distributed_log_querier.Startup(intro_address, version, self_port, log_file_name, isintro,&wg, safeConn)
 	//go distributed_log_querier.SetupTerminal(&wg)	
 	wg.Add(2)
 	wg.Wait()
+}
+
+func subtractStrings(a string, b int) string{
+	//convert a to int and the subtract b from it
+	//return the result as string
+	a_int, err :=strconv.Atoi(a)
+	if err != nil {
+		fmt.Println("Error in converting string to int in subtract strings")
+		return ""
+	}
+	a_int = a_int - b
+	return strconv.Itoa(a_int)
 }
