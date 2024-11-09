@@ -28,7 +28,8 @@ func FileBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}, keytabl
             files, err := os.ReadDir(fileBayDir)
             if err != nil {
                 fmt.Println("Error reading fileBay directory:", err)
-                return
+                time.Sleep(10 * time.Second) // Adjust sleep duration as needed
+                continue
             }
             for _, file := range files {
                 //call the successors to check if enough replicas exist
@@ -224,9 +225,11 @@ func CacheBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}) {
         default:
             // Perform routine tasks
             //fmt.Println("Running CacheBayHandlerRoutine...")
+            
             files, err := os.ReadDir(cacheBayDir)
             if err != nil {
-                fmt.Println("Error reading cacheBay directory:", err)
+               fmt.Println("Error reading cacheBay directory:", err)
+               time.Sleep(10 * time.Second) // Adjust sleep duration as needed
                 continue
             }
 
@@ -273,7 +276,8 @@ func ReplicaBayHandlerRoutine(lc *LamportClock, connTable *sync.Map, keyTable *s
             files, err := os.ReadDir(replicaBayDir)
             if err != nil {
                 fmt.Println("Error reading replicaBay directory:", err)
-                return
+                time.Sleep(10 * time.Second) // Adjust sleep duration as needed
+                continue
             }
             for _, file := range files {
                 //get the fileID
