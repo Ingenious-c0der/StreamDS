@@ -42,7 +42,7 @@ func main(){
 	}
 	//remove for local testing
 	selfHYDFSPort:= os.Getenv("HSP")
-	if selfPort == "" {
+	if selfHYDFSPort == "" {
 		fmt.Println("Please provide the self port")
 		return
 	}
