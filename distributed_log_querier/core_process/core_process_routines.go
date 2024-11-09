@@ -58,7 +58,7 @@ func FileBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}, keytabl
                     sendHyDFSMessage(lc, y_conn.(net.Conn), "REPEXIST " + strconv.Itoa(fileID))
                 }
             }
-            time.Sleep(10 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(5 * time.Second) // Adjust sleep duration as needed
         }
     }
 }
@@ -220,7 +220,7 @@ func CacheBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}) {
             files, err := os.ReadDir(cacheBayDir)
             if err != nil {
                fmt.Println("Error reading cacheBay directory:", err)
-               time.Sleep(10 * time.Second) // Adjust sleep duration as needed
+               time.Sleep(5 * time.Second) // Adjust sleep duration as needed
                 continue
             }
 
@@ -246,7 +246,7 @@ func CacheBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}) {
                     }
                 }
             }
-            time.Sleep(10 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(5 * time.Second) // Adjust sleep duration as needed
         }
     }
 }
@@ -267,7 +267,7 @@ func ReplicaBayHandlerRoutine(lc *LamportClock, connTable *sync.Map, keyTable *s
             files, err := os.ReadDir(replicaBayDir)
             if err != nil {
                 fmt.Println("Error reading replicaBay directory:", err)
-                time.Sleep(10 * time.Second) // Adjust sleep duration as needed
+                time.Sleep(5 * time.Second) // Adjust sleep duration as needed
                 continue
             }
             for _, file := range files {
@@ -307,7 +307,7 @@ func ReplicaBayHandlerRoutine(lc *LamportClock, connTable *sync.Map, keyTable *s
                 }
             }
 
-            time.Sleep(10 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(5 * time.Second) // Adjust sleep duration as needed
         }
     }
 }
