@@ -309,8 +309,11 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 				// }
 			}else if strings.Contains(msg, "REMOVE"){
 				msg = strings.Split(msg, " ")[1]
-				//address := strings.Split(msg, ":")[0]
-				//address += ":"+ hyDFSGlobalPort //TODO: make sure this works out
+				//VM MARKER
+				address := strings.Split(msg, ":")[0]
+				address += ":"+ hyDFSGlobalPort //TODO: make sure this works out
+				msg = address
+				//VM MARKER END
 				nodeID := GetPeerID(msg, m)
 				KeyTableRemove(keyTable, nodeID)
 				//get the conn for the removed node
