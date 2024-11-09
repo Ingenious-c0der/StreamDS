@@ -991,10 +991,10 @@ func GetDistributedLogQuerierDir() string{
 	//dir = filepath.Join(dir, "Node" + strconv.Itoa(self_id))
 	//END VM MARKER
 	//create the directory if it does not exist
-	for _, dir := range []string{"FileBay", "appendBay", "ReplicaBay", "CacheBay", "ArrivalBay", "business", "temp", "Fetched"}{
-		if _, err := os.Stat(filepath.Join(dir)); os.IsNotExist(err) {
-			os.Mkdir(filepath.Join(dir), 0755)
-			fmt.Println("Directory created at " + dir)
+	for _, dirSub := range []string{"FileBay", "appendBay", "ReplicaBay", "CacheBay", "ArrivalBay", "business", "temp", "Fetched"}{
+		if _, err := os.Stat(filepath.Join(dir, dirSub)); os.IsNotExist(err) {
+			os.Mkdir(filepath.Join(dir, dirSub), 0755)
+			fmt.Println("Directory created at " + filepath.Join(dir, dirSub))
 		}
 	}
 	//VM MARKER
