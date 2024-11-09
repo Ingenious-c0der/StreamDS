@@ -984,6 +984,7 @@ func GetDistributedLogQuerierDir() string{
 	dir  = filepath.Dir(dir) //distributed_log_querier
 	dir = filepath.Dir(dir) // G28
 	dir = filepath.Join(dir, "HYDFS") // G28/HYDFS
+	fmt.Println("Directory for HYDFS original " + dir)
 	//VM MARKER
 	//self_id := getSelf_id()
 	//dir = filepath.Join(dir, "Nuke")
@@ -993,6 +994,7 @@ func GetDistributedLogQuerierDir() string{
 	for _, dir := range []string{"FileBay", "appendBay", "ReplicaBay", "CacheBay", "ArrivalBay", "business", "temp", "Fetched"}{
 		if _, err := os.Stat(filepath.Join(dir)); os.IsNotExist(err) {
 			os.Mkdir(filepath.Join(dir), 0755)
+			fmt.Println("Directory created at " + dir)
 		}
 	}
 	//VM MARKER
