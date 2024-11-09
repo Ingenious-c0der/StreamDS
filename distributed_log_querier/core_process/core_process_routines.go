@@ -147,15 +147,18 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                     //if this is the cood for that file ID, then need to forward the append to replicas
                     //filename like append_NodeID_fileID.txt
                     //make sure to store appends only for the right files. 
-                    //if the current node is not the cood OR does not store replica for this file, the remove the file 
-                    
+                    //if current node is the cood for this file and if it does not contain the file in fileBay, drop this append else accept it
                     fileID, err:= strconv.Atoi(strings.Split(file.Name(), "_")[2])
-                    if !checkFileExists("ReplicaBay", "replica_" + strconv.Itoa(fileID) + ".txt") && !checkFileExists("FileBay", "original_" + strconv.Itoa(fileID) + ".txt"){
-                        //wait for 3 seconds 
-                        time.Sleep(3 * time.Second)
-                        //check again
-                        if !checkFileExists("ReplicaBay", "replica_" + strconv.Itoa(fileID) + ".txt") && !checkFileExists("FileBay", "original_" + strconv.Itoa(fileID) + ".txt"){
-                            fmt.Println("File "+file.Name()+ " not moved to append bay (file does not exist)")
+                    //conv to int
+                    if err != nil {
+                        fmt.Println("Error converting fileID to int in append routine")
+                        fileLock.Close()
+                        continue
+                    }
+                    cood_ID := GetHyDFSCoordinatorID(keyTable, fileID)
+                    if cood_ID == self_id{
+                        if !checkFileExists("FileBay", "original_" + strconv.Itoa(fileID) + ".txt"){
+                            fmt.Println("File "+file.Name()+ " is a stray append (file does not exist on local (cood) node)")
                             fileLock.Close()
                             //remove the file
                             err = os.Remove(destinationPath)
@@ -168,25 +171,13 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                                 fmt.Printf("Error deleting file %s from arrival bay: %v\n", file.Name(), err2)
                             }
                             continue
+                        }else{
+                            //release lock before forwarding the append
+                            fileLock.Close()
+                            //make sure the file is in the append bay and is visible 
+                            forwardAppendToReplica(lc, connTable, keyTable,self_id, destinationPath, file.Name())
+                            }
                         }
-                    }
-                    //conv to int
-                    if err != nil {
-                        fmt.Println("Error converting fileID to int in append routine")
-                        fileLock.Close()
-                        continue
-                    }
-                    //check if the selfID is the coordinator for this file
-                    self_id := getSelf_id()
-                    cood_ID := GetHyDFSCoordinatorID(keyTable, fileID)
-                    if cood_ID == self_id{
-                        //release lock before forwarding the append
-                        fileLock.Close()
-                        //make sure the file is in the append bay and is visible 
-                        forwardAppendToReplica(lc, connTable, keyTable,self_id, destinationPath, file.Name())
-                      
-                    }
-                    
                 }
                 if strings.Contains(file.Name(), "cache"){
                     fmt.Println("File "+file.Name()+ " successfully fetched and now can be read")

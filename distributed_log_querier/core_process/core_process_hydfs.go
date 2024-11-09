@@ -380,6 +380,11 @@ func SetupHyDFSCommTerminal(lc *LamportClock, hyDFSGlobalPort string, keyTable *
 		text, _ := reader.ReadString('\n')
 		if strings.HasPrefix(text, "create"){
 			tokens:= strings.Split(text, " ")
+			//check if the command is valid
+			if len(tokens) != 3{
+				fmt.Println("Invalid create command")
+				continue
+			}
 			local_filename := tokens[1]
 			hyDFSFileName := tokens[2]
 			//trim the newline character
@@ -388,7 +393,12 @@ func SetupHyDFSCommTerminal(lc *LamportClock, hyDFSGlobalPort string, keyTable *
 
 		}else if strings.HasPrefix(text, "append"){
 			//append to a file
+			//check if the command is valid
 			tokens:= strings.Split(text, " ")
+			if len(tokens) != 3{
+				fmt.Println("Invalid append command")
+				continue
+			}
 			local_filename := tokens[1]
 			hyDFSFileName := tokens[2]
 			//trim the newline character
@@ -412,6 +422,10 @@ func SetupHyDFSCommTerminal(lc *LamportClock, hyDFSGlobalPort string, keyTable *
 			go FetchCache(strconv.Itoa(fileID), local_filename, fileNameMap)
 		}else if strings.HasPrefix(text, "merge"){
 			tokens:= strings.Split(text, " ")
+			if len(tokens) != 2{
+				fmt.Println("Invalid merge command")
+				continue
+			}
 			//trim the newline character
 			fileName:= tokens[1]
 			fileName = strings.Trim(fileName, "\n")
@@ -459,6 +473,7 @@ func SetupHyDFSCommTerminal(lc *LamportClock, hyDFSGlobalPort string, keyTable *
 			break
 		}else if strings.HasPrefix(text, "listmemids"){
 			//display the keytable
+			fmt.Println("Total : " + strconv.Itoa(getSyncMapLength(keyTable)))
 			displayKeyTable(keyTable)
 		}else if strings.HasPrefix(text, "showfilemap"){
 			//fileName map is a sync mapo
@@ -474,6 +489,11 @@ func SetupHyDFSCommTerminal(lc *LamportClock, hyDFSGlobalPort string, keyTable *
 			//broadcast the 
 			//trim the newline character
 			text = strings.Trim(text, "\n")
+			//check if it contains 2 tokens
+			if len(strings.Split(text, " ")) != 2{
+				fmt.Println("Invalid ls command")
+				continue
+			}
 			fileName := strings.Split(text, " ")[1]
 			file_ID := GetFileID(fileName,m)
 			//broadcast to all nodes for information
@@ -486,6 +506,10 @@ func SetupHyDFSCommTerminal(lc *LamportClock, hyDFSGlobalPort string, keyTable *
 		}else if strings.HasPrefix(text, "getfromreplica"){
 			//getfromreplica NodeID filename localfilename
 			tokens:= strings.Split(text, " ")
+			if len(tokens) != 4{
+				fmt.Println("Invalid getfromreplica command")
+				continue
+			}
 			nodeID := tokens[1]
 			fileName := tokens[2]
 			localFileName := tokens[3]

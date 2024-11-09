@@ -206,22 +206,31 @@ func forwardReplica(lc *LamportClock, conn net.Conn, fileID string, node_ID int)
 	//check if there are any logical appends for this file 
 	dir := GetDistributedLogQuerierDir()
 	appendDir := filepath.Join(dir, "appendBay")
-	nodeDir := filepath.Join(appendDir, strconv.Itoa(node_ID))
-	if _, err := os.Stat(nodeDir); os.IsNotExist(err) {
-		fmt.Println("No logical appends found for file - NO OP " + fileID)
-		return
-	}
-	files, err := os.ReadDir(nodeDir)
+	nodeDirs, err := os.ReadDir(appendDir)
 	if err != nil {
 		fmt.Println("Error reading append directory:", err)
 		return
 	}
-	//send the logical append files
-	for _, file := range files {
-			node_file_path:= filepath.Join(strconv.Itoa(node_ID), file.Name())
-			fmt.Println("Node file path for append" + node_file_path)
-			fmt.Println("Sending logical append file " + file.Name() + " to " + conn.RemoteAddr().String())
-			sendHyDFSFile(lc, conn, "append", node_file_path, file.Name())
+	//read the nodeDir folders
+	for _, nodeDirF := range nodeDirs {
+		nodeDir := filepath.Join(appendDir, nodeDirF.Name())
+		nodeID := nodeDirF.Name()
+		if _, err := os.Stat(nodeDir); os.IsNotExist(err) {
+			fmt.Println("No logical appends found for file - NO OP " + fileID)
+			return
+		}
+		files, err := os.ReadDir(nodeDir)
+		if err != nil {
+			fmt.Println("Error reading append directory:", err)
+			return
+		}
+		//send the logical append files
+		for _, file := range files {
+				node_file_path:= filepath.Join(nodeID, file.Name())
+				fmt.Println("Node file path for append" + node_file_path)
+				fmt.Println("Sending logical append file " + file.Name() + " to " + conn.RemoteAddr().String())
+				sendHyDFSFile(lc, conn, "append", node_file_path, file.Name())
+		}
 	}
 }
 
