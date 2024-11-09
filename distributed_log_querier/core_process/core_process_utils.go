@@ -990,19 +990,26 @@ func GetDistributedLogQuerierDir() string{
 	//dir = filepath.Join(dir, "Node" + strconv.Itoa(self_id))
 	//END VM MARKER
 	//create the directory if it does not exist
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.Mkdir(dir, 0755)
-		fmt.Println("Directory created at " + dir)
-		//create the file bay, append bay, replica bay, cache bay
-		os.Mkdir(filepath.Join(dir, "FileBay"), 0755)
-		os.Mkdir(filepath.Join(dir, "appendBay"), 0755)
-		os.Mkdir(filepath.Join(dir, "ReplicaBay"), 0755)
-		os.Mkdir(filepath.Join(dir, "CacheBay"), 0755)
-		os.Mkdir(filepath.Join(dir, "ArrivalBay"), 0755)
-		os.Mkdir(filepath.Join(dir, "business"), 0755)
-		os.Mkdir(filepath.Join(dir, "temp"), 0755)
-		os.Mkdir(filepath.Join(dir, "Fetched"), 0755)
+	for _, dir := range []string{"FileBay", "appendBay", "ReplicaBay", "CacheBay", "ArrivalBay", "business", "temp", "Fetched"}{
+		if _, err := os.Stat(filepath.Join(dir)); os.IsNotExist(err) {
+			os.Mkdir(filepath.Join(dir), 0755)
+		}
 	}
+	//VM MARKER
+	// if _, err := os.Stat(dir); os.IsNotExist(err) {
+	// 	os.Mkdir(dir, 0755)
+	// 	fmt.Println("Directory created at " + dir)
+	// 	//create the file bay, append bay, replica bay, cache bay
+	// 	os.Mkdir(filepath.Join(dir, "FileBay"), 0755)
+	// 	os.Mkdir(filepath.Join(dir, "appendBay"), 0755)
+	// 	os.Mkdir(filepath.Join(dir, "ReplicaBay"), 0755)
+	// 	os.Mkdir(filepath.Join(dir, "CacheBay"), 0755)
+	// 	os.Mkdir(filepath.Join(dir, "ArrivalBay"), 0755)
+	// 	os.Mkdir(filepath.Join(dir, "business"), 0755)
+	// 	os.Mkdir(filepath.Join(dir, "temp"), 0755)
+	// 	os.Mkdir(filepath.Join(dir, "Fetched"), 0755)
+	// }
+	//END VM MARKER
 	return dir
 }
 

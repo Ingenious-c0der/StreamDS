@@ -858,12 +858,12 @@ func Startup(introducer_address string, version string, port string, log_file st
 			// Retry mechanism for getting the membership list
 			retries := 5
 			introR := false
+			self_intro_message := "INTRO$" + GetOutboundIP().String() + ":" + port + "$" + version + "$" + strconv.Itoa(self_incarnationNumber)
+			self_hash = GetOutboundIP().String() + ":" + port + "-" + version
+			AddToMembershipList(&membershipList, self_hash, self_incarnationNumber, hydfsConn)
+			go StartUDPListener(port_int, &peerStatus, &peerLastPinged, &membershipList, hydfsConn)
 			for retries > 0 {
 				// Send intro message to the introducer
-				self_intro_message := "INTRO$" + GetOutboundIP().String() + ":" + port + "$" + version + "$" + strconv.Itoa(self_incarnationNumber)
-				self_hash = GetOutboundIP().String() + ":" + port + "-" + version
-				AddToMembershipList(&membershipList, self_hash, self_incarnationNumber, hydfsConn)
-				go StartUDPListener(port_int, &peerStatus, &peerLastPinged, &membershipList, hydfsConn)
 				communicateUDPToPeer(self_intro_message, addr, true)
 				// Wait for INTROACK for 3 seconds
 				timeout := time.After(3 * time.Second)
