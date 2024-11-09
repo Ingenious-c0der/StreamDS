@@ -156,15 +156,46 @@ func GetLocalSupportForFile(fileID string) string{
 		return support
 	}
 	nodeDirNames := make([]string, 0)
+	flag := false
 	for _, nodeDir := range nodeDirs {
 		//directly send nodedir names 
-		nodeDirNames = append(nodeDirNames, nodeDir.Name())
+		//if node dir is empty then skip 
+		isEmpty, err := isDirEmpty(filepath.Join(appendDir, nodeDir.Name()))
+		if err != nil {
+			fmt.Println("Error checking if directory is empty:", err)
+			return support
+		}
+		if !isEmpty{
+			nodeDirNames = append(nodeDirNames, nodeDir.Name())
+			flag = true
+		}
 	}
-	support = support + "Append Files " + strconv.Itoa(self_id) + "@"+ selfAddress + " stores logical appends from " + strings.Join(nodeDirNames, ",") + "\n"
-	return support
+	if flag{
+		support = support + "Append Files " + strconv.Itoa(self_id) + "@"+ selfAddress + " stores logical appends from " + strings.Join(nodeDirNames, ",") + "\n"
+	}
+		return support
 }
 
+func isDirEmpty(dir string) (bool, error) {
+    f, err := os.Open(dir)
+    if err != nil {
+        return false, err
+    }
+    defer f.Close()
 
+    // Read only one entry from the directory
+    _, err = f.Readdir(1)
+    if err == io.EOF {
+        // No entries found, so the directory is empty
+        return true, nil
+    }
+    if err != nil {
+        // Return any other error encountered
+        return false, err
+    }
+    // Entry exists, so the directory is not empty
+    return false, nil
+}
 
 //handles the forwarding of both, append files and replicas
 func forwardReplica(lc *LamportClock, conn net.Conn, fileID string, node_ID int){
@@ -177,7 +208,7 @@ func forwardReplica(lc *LamportClock, conn net.Conn, fileID string, node_ID int)
 	appendDir := filepath.Join(dir, "appendBay")
 	nodeDir := filepath.Join(appendDir, strconv.Itoa(node_ID))
 	if _, err := os.Stat(nodeDir); os.IsNotExist(err) {
-		fmt.Println("Node directory does not exist,skipping logical appends")
+		fmt.Println("No logical appends found for file - NO OP " + fileID)
 		return
 	}
 	files, err := os.ReadDir(nodeDir)
@@ -190,7 +221,7 @@ func forwardReplica(lc *LamportClock, conn net.Conn, fileID string, node_ID int)
 			node_file_path:= filepath.Join(strconv.Itoa(node_ID), file.Name())
 			fmt.Println("Node file path for append" + node_file_path)
 			fmt.Println("Sending logical append file " + file.Name() + " to " + conn.RemoteAddr().String())
-			sendHyDFSFile(lc, conn, "append", filepath.Join(node_file_path, file.Name()), file.Name())
+			sendHyDFSFile(lc, conn, "append", node_file_path, file.Name())
 	}
 }
 
@@ -319,6 +350,7 @@ func LogicalTempMerge(fileID string, requestor_node_id string) string {
 		}
 		//append in place the logical appends with newline
 		fmt.Println("Node list for logical merge", node_list)
+		originalFileData = append(originalFileData, []byte("\n")...)
 		for _, appendFile := range node_list{
 			appendFileData, err := os.ReadFile(appendFile.Key)
 			if err != nil {
@@ -429,7 +461,7 @@ func mergeFile(fileID string){
 	//5. remove the logical appends
 
 	//check if the file exists in the file bay
-	if !checkFileExists("FileBay", "original_" + fileID) && !checkFileExists("ReplicaBay", "replica_" + fileID){
+	if !checkFileExists("FileBay", "original_" + fileID+".txt") && !checkFileExists("ReplicaBay", "replica_" + fileID+".txt"){
 		fmt.Println("File to be merged does not exist in the file bay or replica bay")
 		return
 	}
@@ -438,9 +470,9 @@ func mergeFile(fileID string){
 	dir := GetDistributedLogQuerierDir()
 	filePath := filepath.Join(dir, "FileBay", "original_" + fileID)
 	if checkFileExists("FileBay", "original_" + fileID){
-		filePath = filepath.Join(dir, "FileBay", "original_" + fileID)
+		filePath = filepath.Join(dir, "FileBay", "original_" + fileID + ".txt")
 	}else if checkFileExists("ReplicaBay", "replica_" + fileID){
-		filePath = filepath.Join(dir, "ReplicaBay", "replica_" + fileID)
+		filePath = filepath.Join(dir, "ReplicaBay", "replica_" + fileID + ".txt")
 	}
 	//iterate over the appendsBay to search the logical appends for this file
 	// the appendbay dir is structured as appendBay/nodeID/append_file
@@ -504,6 +536,7 @@ func mergeFile(fileID string){
 		return
 	}
 	//append in place the logical appends with newline 
+	originalFileData = append(originalFileData, []byte("\n")...)
 	for _, appendFile := range queue{
 		appendFileData, err := os.ReadFile(appendFile)
 		if err != nil {
@@ -529,10 +562,10 @@ func mergeFile(fileID string){
 func removeFile(filePath string){
 	//check if the file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		// if strings.Contains(filePath, "cache"){
-		// 	//silent remove trial for cache files
-		// 	return 
-		// }
+		if strings.Contains(filePath, "cache"){
+			//silent remove trial for cache files
+			return 
+		}
 		fmt.Println("File does not exist for removal " + filePath)
 		return
 	}
@@ -667,7 +700,9 @@ func sendHyDFSFile(lc *LamportClock, conn net.Conn, fileType string, local_filen
 	}else if fileType == "append"{
 		//send from the append bay
 		//filename must contain the nodeID dir when the type is append!
-		filePath = filepath.Join(dir, local_filename)
+		//fmt.Println("Local Filename for append " + local_filename)
+		filePath = filepath.Join(dir, "appendBay",local_filename)
+		//fmt.Println("Append Bay constructed path " + filePath)
 	}else if fileType == "original"{
 		//send from the file bay
 		filePath = filepath.Join(dir, "FileBay", local_filename)
@@ -736,12 +771,17 @@ func forwardAppendToReplica(lc *LamportClock, connTable *sync.Map, keyTable *syn
 		fmt.Println("Error loading conn from connTable")
 		return
 	}
-	fmt.Println("Forwarding append file " + fileName + " to " + conn1.(net.Conn).RemoteAddr().String() + filePath)
-	fmt.Println("Forwarding append file " + fileName + " to " + conn2.(net.Conn).RemoteAddr().String() + filePath)
+	//fmt.Println("Forwarding append file " + fileName + " to " + conn1.(net.Conn).RemoteAddr().String() + filePath)
+	//fmt.Println("Forwarding append file " + fileName + " to " + conn2.(net.Conn).RemoteAddr().String() + filePath)
 
 	//send the file to the successors
-	sendHyDFSFile(lc, conn1.(net.Conn), "append", filePath, fileName)
-	sendHyDFSFile(lc, conn2.(net.Conn), "append", filePath, fileName)
+	//must send append/29/fileName as local_filename
+	node_ID := strings.Split(fileName, "_")[1]
+	//fmt.Println("Node ID for append " + node_ID)
+	node_file_path:= filepath.Join(node_ID, fileName)
+	//fmt.Println("Node file path for append " + node_file_path)
+	sendHyDFSFile(lc, conn1.(net.Conn), "append", node_file_path, fileName)
+	sendHyDFSFile(lc, conn2.(net.Conn), "append", node_file_path, fileName)
 	fmt.Println("Append File " + fileName + " successfully forwarded to successors")
 }
 
@@ -940,12 +980,15 @@ func GetAddressfromHash(hash *string) string {
 func GetDistributedLogQuerierDir() string{
 	//for local testing call self_id 
 	_,currentFile,_,_ := runtime.Caller(0)
-	dir := filepath.Dir(currentFile)
-	dir  = filepath.Dir(dir)
-	dir = filepath.Dir(dir)
-	self_id := getSelf_id()
-	dir = filepath.Join(dir, "Nuke")
-	dir = filepath.Join(dir, "Node" + strconv.Itoa(self_id))
+	dir := filepath.Dir(currentFile) //core_process
+	dir  = filepath.Dir(dir) //distributed_log_querier
+	dir = filepath.Dir(dir) // G28
+	dir = filepath.Join(dir, "HYDFS") // G28/HYDFS
+	//VM MARKER
+	//self_id := getSelf_id()
+	//dir = filepath.Join(dir, "Nuke")
+	//dir = filepath.Join(dir, "Node" + strconv.Itoa(self_id))
+	//END VM MARKER
 	//create the directory if it does not exist
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		os.Mkdir(dir, 0755)
@@ -965,6 +1008,12 @@ func GetDistributedLogQuerierDir() string{
 
 // Helper function to copy file contents
 func copyFileContents(src, dst string) error {
+	if !strings.Contains(src, ".txt"){
+		src = src + ".txt"
+	}
+	if !strings.Contains(dst, ".txt"){
+		dst = dst + ".txt"
+	}
     sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -977,7 +1026,7 @@ func copyFileContents(src, dst string) error {
     defer destFile.Close()
 
     _, err = io.Copy(destFile, sourceFile)
-	fmt.Println("Copy Done")
+	//fmt.Println("Copy Done")
     return err
 }
 
@@ -989,19 +1038,21 @@ func sendUpdateToHYDFS(hydfsConn *SafeConn, message string){
 	}
 }
 
-//currentlyassumes that the nodehash is in the format "ip:port"
+//node hash like address:port-incarnation
 func convertNodeHashForHYDFS(nodeHash string) string {
-	//TODO: start here, check what the nodehash actually is
 	token := strings.Split(nodeHash, "-")[0]
-	port := strings.Split(token, ":")[1]
-	address:= strings.Split(token, ":")[0]
-	a_int, err :=strconv.Atoi(port)
-	if err != nil {
-		fmt.Println("Error in converting string to int in port")
-		return ""
-	}
-	a_int = a_int - 2020
-	return address + ":" + strconv.Itoa(a_int)
+	//VM MARKER
+	// port := strings.Split(token, ":")[1]
+	// address:= strings.Split(token, ":")[0]
+	// a_int, err :=strconv.Atoi(port)
+	// if err != nil {
+	// 	fmt.Println("Error in converting string to int in port")
+	// 	return ""
+	// }
+	// a_int = a_int - 2020
+	//return address + ":" + strconv.Itoa(a_int)
+	//END VM MARKER
+	return token 
 	
 }
 

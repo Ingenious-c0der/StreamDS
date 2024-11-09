@@ -1,2 +1,7 @@
 *.log
 *.txt
+
+# But not the ones in HYDFS/business
+!HYDFS/
+!HYDFS/business/
+!HYDFS/business/*.txt

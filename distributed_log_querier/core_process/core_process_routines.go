@@ -20,7 +20,7 @@ func FileBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}, keytabl
     for {
         select {
         case <-stopChan:
-            fmt.Println("FileBayHandlerRoutine stopped")
+            //fmt.Println("FileBayHandlerRoutine stopped")
             return
         default:
             // Perform routine tasks
@@ -57,7 +57,7 @@ func FileBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}, keytabl
                     sendHyDFSMessage(lc, y_conn.(net.Conn), "REPEXIST " + strconv.Itoa(fileID))
                 }
             }
-            time.Sleep(15 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(10 * time.Second) // Adjust sleep duration as needed
         }
     }
 }
@@ -113,13 +113,13 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                     NodeID := strings.Split(file.Name(), "_")[1]
                     //check if the directory exists
                     appendBayDirtmp := filepath.Join(appendBayDir, NodeID)
-                    fmt.Println("AppendBayDir: ", appendBayDirtmp)
+                    //fmt.Println("AppendBayDir: ", appendBayDirtmp)
                     if _, err := os.Stat(appendBayDirtmp); os.IsNotExist(err) {
                         os.Mkdir(appendBayDirtmp, 0755)
                     }
                     destinationPath = filepath.Join(appendBayDirtmp, file.Name())
 
-                }else if strings.Contains(file.Name(), "replica"){
+                }else if strings.Contains(file.Name(), "replica") && !strings.Contains(file.Name(), "cache"){
                     destinationPath = filepath.Join(replicaBayDir, file.Name())
                 }else if strings.Contains(file.Name(), "cache"){
                     destinationPath = filepath.Join(cacheBayDir, file.Name())
@@ -145,8 +145,30 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                 if strings.Contains(file.Name(), "append"){
                     //if this is the cood for that file ID, then need to forward the append to replicas
                     //filename like append_NodeID_fileID.txt
-
+                    //make sure to store appends only for the right files. 
+                    //if the current node is not the cood OR does not store replica for this file, the remove the file 
+                    
                     fileID, err:= strconv.Atoi(strings.Split(file.Name(), "_")[2])
+                    if !checkFileExists("ReplicaBay", "replica_" + strconv.Itoa(fileID) + ".txt") && !checkFileExists("FileBay", "original_" + strconv.Itoa(fileID) + ".txt"){
+                        //wait for 3 seconds 
+                        time.Sleep(3 * time.Second)
+                        //check again
+                        if !checkFileExists("ReplicaBay", "replica_" + strconv.Itoa(fileID) + ".txt") && !checkFileExists("FileBay", "original_" + strconv.Itoa(fileID) + ".txt"){
+                            fmt.Println("File "+file.Name()+ " not moved to append bay (file does not exist)")
+                            fileLock.Close()
+                            //remove the file
+                            err = os.Remove(destinationPath)
+                            //also remove the file from arrival bay
+                            err2 := os.Remove(sourcePath)
+                            if err != nil {
+                                fmt.Printf("Error deleting file %s from arrival bay: %v\n", file.Name(), err)
+                            }
+                            if err2 != nil {
+                                fmt.Printf("Error deleting file %s from arrival bay: %v\n", file.Name(), err2)
+                            }
+                            continue
+                        }
+                    }
                     //conv to int
                     if err != nil {
                         fmt.Println("Error converting fileID to int in append routine")
@@ -159,16 +181,9 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                     if cood_ID == self_id{
                         //release lock before forwarding the append
                         fileLock.Close()
-                        NodeID := strings.Split(file.Name(), "_")[1]
                         //make sure the file is in the append bay and is visible 
-                        fmt.Println("here")
-                        res:= checkFileExists(filepath.Join(appendBayDir, NodeID), file.Name())
-                        time.Sleep(2 * time.Second)
-                        if !res{
-                            fmt.Println("File "+file.Name()+ " not found in append bay")
-                            continue
-                        }
                         forwardAppendToReplica(lc, connTable, keyTable,self_id, destinationPath, file.Name())
+                      
                     }
                     
                 }
@@ -181,7 +196,7 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                 if err != nil {
                     fmt.Printf("Error deleting file %s from arrival bay: %v\n", file.Name(), err)
                 } else {
-                    fmt.Printf("File %s moved to fileBay and deleted from arrival bay\n", file.Name())
+                    fmt.Printf("File %s moved to internals and deleted from arrival bay\n", file.Name())
                 }
 
                 fileLock.Close() // Release lock
@@ -226,7 +241,7 @@ func CacheBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}) {
                     continue
                 }
                 // Check if file is older than 60 seconds
-                fmt.Println("Checking file:", file.Name())
+                //fmt.Println("Checking file:", file.Name())
                 if currentTime.Sub(fileInfo.ModTime()) > 60*time.Second {
                     // File is stale, remove it
                     err := os.Remove(filepath.Join(cacheBayDir, file.Name()))
@@ -279,11 +294,25 @@ func ReplicaBayHandlerRoutine(lc *LamportClock, connTable *sync.Map, keyTable *s
                 if cood_ok{
                     sendHyDFSMessage(lc, cood_conn.(net.Conn), "ISCOOD " + strconv.Itoa(fileID))
                 }else{
-                    fmt.Println("Coordinator for fileID: ", fileID, " is missing, THIS SHOULD NEVER HAPPEN")
+                    if self_id == cood{
+                         //case where you need to become the cood for this file since we do not store the cood for self
+                         dir := GetDistributedLogQuerierDir()
+                         replica_file_name := "replica_" + strconv.Itoa(fileID) + ".txt"
+                         original_file_name := "original_" + strconv.Itoa(fileID) + ".txt"
+                         err := copyFileContents(filepath.Join(dir, "ReplicaBay", replica_file_name), filepath.Join(dir, "FileBay", original_file_name))
+                         if err != nil{
+                             fmt.Println("Error copying file from ReplicaBay to FileBay")
+                         }else{
+                             removeFile(filepath.Join(dir, "ReplicaBay", replica_file_name))
+                         }
+                         fmt.Println("Taking over as COOD for file " + strconv.Itoa(fileID))
+                    }else{
+                        fmt.Println("This should never happen, cood not found for fileID: ", fileID)
+                    }
                 }
             }
 
-            time.Sleep(15 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(10 * time.Second) // Adjust sleep duration as needed
         }
     }
 }

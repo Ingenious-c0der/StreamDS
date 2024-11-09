@@ -30,8 +30,8 @@ func main(){
 	}
 	log_file_name := os.Getenv("LOG_FILE_NAME")
 	if log_file_name == "" {
-		fmt.Println("Please provide the log file name")
-		return
+		//create hash on the basis of self port
+		log_file_name = "log_file_" + self_port + ".log"
 	}
 	isIntroducer := os.Getenv("IS_INTRODUCER")
 	var isintro bool
@@ -40,12 +40,20 @@ func main(){
 	}else{
 		isintro = true
 	}
-	//establish the connection with hydfs layer using self pipe using safe conn 
-	selfHYDFSPort := subtractStrings(self_port, 3030)
-	if selfHYDFSPort == "" {
-		fmt.Println("Error in substracting strings")
+	//remove for local testing
+	selfHYDFSPort:= os.Getenv("HSP")
+	if selfPort == "" {
+		fmt.Println("Please provide the self port")
 		return
 	}
+	//establish the connection with hydfs layer using self pipe using safe conn 
+	//VM MARKER
+	// selfHYDFSPort := subtractStrings(self_port, 3030)
+	// if selfHYDFSPort == "" {
+	// 	fmt.Println("Error in substracting strings")
+	// 	return
+	// }
+	//VM MARKER END
 	safeConn := distributed_log_querier.StartSelfPipeHYDFS(selfHYDFSPort)
 	if safeConn == nil {
 		fmt.Println("Error in starting self pipe")
