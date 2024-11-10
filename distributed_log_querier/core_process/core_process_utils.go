@@ -677,7 +677,8 @@ func displayKeyTable(keyTable *sync.Map){
 }
 
 func sendHyDFSMessage(lc *LamportClock,conn net.Conn, msg string){
-	conn.Write([]byte(msg + "END_OF_MSG\n"))
+	bytesSent,_ := conn.Write([]byte(msg + "END_OF_MSG\n"))
+	atomic.AddInt64(&totalBytesSent, int64(bytesSent))
 	lc.Increment()
 }
 
@@ -736,11 +737,11 @@ func sendHyDFSFile(lc *LamportClock, conn net.Conn, fileType string, local_filen
 	//add end of message
 	message = append(message, []byte("\nEND_OF_MSG\n")...)
     // Send the entire message
-    _, err = conn.Write(message)
+    bytesSent, err := conn.Write(message)
     if err != nil {
         fmt.Println("Error sending file:", err)
     }
-
+	atomic.AddInt64(&totalBytesSent, int64(bytesSent))
 	lc.Increment()
     fmt.Printf("File %s sent successfully\n", filepath.Base(filePath))
 }

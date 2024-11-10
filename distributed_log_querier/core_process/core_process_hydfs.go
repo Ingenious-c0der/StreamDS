@@ -10,11 +10,26 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"sync/atomic"
 )
 
 
 var self_id int //node id of the current node
+var totalBytesSent int64 // global counter for total bytes sent
 
+func startBandwidthMonitor() {
+	ticker := time.NewTicker(1 * time.Second)
+	go func() {
+		for range ticker.C {
+			// Calculate MB/s
+			mbps := float64(atomic.SwapInt64(&totalBytesSent, 0)) / (1024 * 1024)
+			//do not print if 0
+			if mbps > 1 {
+				fmt.Printf("Bandwidth used: %.2f MB/s\n", mbps)
+			}
+		}
+	}()
+}
 
 func getSelf_id() int{
 	return self_id
@@ -56,6 +71,7 @@ func handleHyDFS(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTable *
 				if response == "FALSE"{
 					lc.Increment()
 					//replicate the file on that node
+					fmt.Println("Replica start "+ time.Now().Format("15:04:05.000000"))
 					fmt.Println("Replicating file " + file_ID + " to " + conn.RemoteAddr().String())
 					forwardReplica(lc, conn, file_ID, self_id ) //handles forward of replica and appends both
 				}
@@ -596,6 +612,7 @@ func StartHyDFS(hyDFSSelfPort string, hyDFSGlobalPort string, selfAddress  strin
 	go StartPipe(&lc, hyDFSSelfPort,hyDFSGlobalPort, &keyTable, &connTable,&fileNameMap, wg, m)
 	go StartHyDFSListener(&lc, hyDFSGlobalPort, &keyTable, &connTable,&fileNameMap,  wg,m)
 	go SetupHyDFSCommTerminal(&lc, hyDFSGlobalPort, &keyTable, &connTable,&fileNameMap, wg, m,stopRoutineChan)
+	go startBandwidthMonitor()
 	wg.Wait()
 	//send a signal to stop the ping routine
 

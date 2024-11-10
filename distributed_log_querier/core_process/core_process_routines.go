@@ -143,6 +143,9 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                     fileLock.Close()
                     continue
                 }
+                if strings.Contains(file.Name(), "replica"){
+                    fmt.Println("Replication completed " + time.Now().Format("04:05:05.000000"))
+                }
                 if strings.Contains(file.Name(), "append"){
                     //if this is the cood for that file ID, then need to forward the append to replicas
                     //filename like append_NodeID_fileID.txt
