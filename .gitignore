@@ -1,10 +1,14 @@
 *.log
 *.txt
 
-# But not the ones in HYDFS/business
-!HYDFS/
+
+# Track everything else in HYDFS/business/
 !HYDFS/business/
 !HYDFS/business/*.txt
+# Ignore all files in HYDFS/business/ containing 'mb' in the name
+HYDFS/business/*mb.txt
+
+
 
 !Test1/
 !Test1/*.txt
