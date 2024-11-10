@@ -5,3 +5,6 @@
 !HYDFS/
 !HYDFS/business/
 !HYDFS/business/*.txt
+
+!Test1/
+!Test1/*.txt
