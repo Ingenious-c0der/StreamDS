@@ -4,8 +4,55 @@
 
 This document explains how to run all the codes, their functionality and the general structure of the directories. 
 
-At first the directory might feel a bit too messy, but its really not once you get the hang of it. Please go through to this entire document before attempting to run the code. Its not spaghetti code, its just comprehensive code with a multitude of features and no bugs! All the codes are expected to run properly, if they don't the problem is likely how they were launched. Pretty sure we have made covefe proud! :) 
+At first the directory might feel a bit too messy, but its really not once you get the hang of it. Please go through to this entire document before attempting to run the code. Its not spaghetti code, its just comprehensive code with a multitude of features and no bugs! All the codes are expected to run properly, if they don't the problem is likely how they were launched. We do not use the well treaded go rpc for this assignment, but instead use Sockets to make it a little more fun and gain finer control on operations.(it made our lives worse but got much more to learn!) Pretty sure we have made covefe proud! :) 
 Anyway on to the actual explanation!
+
+
+
+## MP3 Details (HYDFS)
+To run MP3 on VM, you need to run both MP3 and MP2, steps as follows. 
+
+#### Step 1. Start the MP3 using the following commands (same for all the VMs)
+```bash
+HGP=5050 HSP=5051 go run core_process_hydfs_intf.go
+```
+Here HGP defines the HyDFS Global Port on which all the HYDFS processes will run and expect other processes to run too! If you want to change that, change it across all the VMs! HSP stands for HYDFS Self Port which is the port on which the MP2 connects to MP3 using a TCP pipe. (self connection)
+
+
+#### Step 2. Start the good ol MP2 with a twist
+The MP3 code should already be up and running! Otherwise it won't connect with it and would fail to start.
+##### for INTRODUCER node
+```bash
+INTRO_ADDRESS=127.0.0.1:8000 VERSION=1.0 SELF_PORT=8000 LOG_FILE_NAME=server.log IS_INTRODUCER=True HSP=5051 go run core_process_fail_detect_intf.go
+```
+##### for Normies
+```bash
+
+INTRO_ADDRESS=172.22.156.92:8000 VERSION=1.0 SELF_PORT=8000 LOG_FILE_NAME=server.log HSP=5051 IS_INTRODUCER= go run core_process_fail_detect_intf.go
+```
+Make sure that HSP match for MP2 and MP3 and you are good to go! Often times you might face a bind address issue randomly (trust me I have tried to solve it a million different ways but sometimes some random application might want to have a piece of cake of your port! Just retry)
+
+#### Step 3. Create Files, Read them and Write them!
+We implement all the required commands exactly as stated in the description, you don't need to specify the directory name when passing the path, just the filename. The filename will be automatically searched for the business dataset directory. For downloading/fetching the filename will be directly attached to the /Fetched/ directory and your results will be waiting for you there!
+
+
+##### To run the code locally
+Well its a bit more complicated than on VM since you need to manage 30 ports, but no worries! Using your text editor search for the //VM MARKER START and //VM MARKER END messages. Use the local alternative for that section (provided in line and commented out). It is completely possible to get this code running locally in less than 10 mins! But the commands for running each "VM" in that case will be different 
+example would be as follows. 
+```bash
+INTRO_ADDRESS=127.0.0.1:8081 VERSION=1.0 SELF_PORT=8081 LOG_FILE_NAME=server1.log IS_INTRODUCER=True go run core_process_fail_detect_intf.go
+
+HGP=6061 HSP=5051 go run core_process_hydfs_intf.go
+
+INTRO_ADDRESS=127.0.0.1:8081 VERSION=1.0 SELF_PORT=8082 LOG_FILE_NAME=server2.log IS_INTRODUCER= go run core_process_fail_detect_intf.go
+
+HGP=6062 HSP=5052 go run core_process_hydfs_intf.go
+
+INTRO_ADDRESS=127.0.0.1:8081 VERSION=1.0 SELF_PORT=8083 LOG_FILE_NAME=server3.log IS_INTRODUCER= go run core_process_fail_detect_intf.go
+
+HGP=6063 HSP=5053 go run core_process_hydfs_intf.go
+```
+
 
 ## MP2 Details (SWIM For failure detection)
 
