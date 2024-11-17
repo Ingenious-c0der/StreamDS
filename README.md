@@ -1,6 +1,7 @@
 # G28 MP Submission
-# Distributed Log Querier 
-## By Sagar Abhyankar (sra9) and Aditya Kulkarni (aak14)
+# Uptil now : MP3 -> Hy Distributed File System
+## Coming up -> (MP4) Distributed Streaming service like Apache Spark Streaming/ Millwheel. 
+## By Sagar Abhyankar
 
 This document explains how to run all the codes, their functionality and the general structure of the directories. 
 
