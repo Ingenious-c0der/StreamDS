@@ -1,6 +1,6 @@
 *.log
 *.txt
-
+*.py
 # But not the ones in HYDFS/business
 !HYDFS/
 !HYDFS/business/
