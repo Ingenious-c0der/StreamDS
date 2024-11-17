@@ -15,7 +15,6 @@ import (
 
 var self_id int //node id of the current node
 
-
 func getSelf_id() int{
 	return self_id
 }
@@ -56,6 +55,7 @@ func handleHyDFS(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTable *
 				if response == "FALSE"{
 					lc.Increment()
 					//replicate the file on that node
+					
 					fmt.Println("Replicating file " + file_ID + " to " + conn.RemoteAddr().String())
 					forwardReplica(lc, conn, file_ID, self_id ) //handles forward of replica and appends both
 				}

@@ -736,11 +736,10 @@ func sendHyDFSFile(lc *LamportClock, conn net.Conn, fileType string, local_filen
 	//add end of message
 	message = append(message, []byte("\nEND_OF_MSG\n")...)
     // Send the entire message
-    _, err = conn.Write(message)
-    if err != nil {
+    _, errW := conn.Write(message)
+    if errW != nil {
         fmt.Println("Error sending file:", err)
     }
-
 	lc.Increment()
     fmt.Printf("File %s sent successfully\n", filepath.Base(filePath))
 }
