@@ -1,5 +1,5 @@
 # G28 MP Submission
-# Uptil now : MP3 -> Hy Distributed File System
+# Up till now : MP3 -> Hy Distributed File System
 ## Coming up -> (MP4) Distributed Streaming service like Apache Spark Streaming/ Millwheel. 
 ## By Sagar Abhyankar
 
