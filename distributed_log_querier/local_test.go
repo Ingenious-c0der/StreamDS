@@ -8,16 +8,198 @@ import (
 	"testing"
 	"math/rand"
 	"sort"
+	"encoding/json"
+	"os"
+	"io"
+	"path/filepath"
+	"bytes"
 )
 
 
 func TestLocalTesting(t *testing.T) {
 	//testKeyTableAddRemove(t)
 	//testKeyTableAddRemove(t)
-	testFileAndNodeIdMaptoRing(t)
+	//testFileAndNodeIdMaptoRing(t)
+	//testLocalOperatorRuns(t)
+	//testBufferWritingFunctionality(t)
+
+	// count , err := countLinesFromFile(t)
+	// if err != nil {
+	// 	fmt.Println("Error reading file: ", err)
+	// }
+	// fmt.Println("Number of lines in the file: ", count)
+
+	//testParitioning(t)
+	//testLoops(t)
+	//testReadPartitioning(t)
+	//testLocalOperatorRunSplitLine(t)
+	testLocalOperatorRunWordCount(t)
+}
+
+func testReadPartitioning(t *testing.T) {
+	lines, err := distributed_log_querier.ReadFilePartition("server9.log", 50 , 52)
+	if err != nil {
+		fmt.Println("Error reading file: ", err)
+	}
+	fmt.Println("Number of lines in the file: ", len(lines))
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+}
+
+func testLoops(t *testing.T) {
+	num_tasks := 3 
+	for  i := 0; i < num_tasks; i++ {
+		fmt.Println("Task Stage2: ", i)
+	}
+	for i:= num_tasks; i < 2*num_tasks; i++ {
+		fmt.Println("Task Stage1: ", i)
+	}
+	for i:= 2*num_tasks; i < 3*num_tasks; i++ {
+		fmt.Println("Task Stage0: ", i)
+	}
+}
+func testParitioning(t *testing.T) {
+	paritions := distributed_log_querier.GetFairPartitions(100, 1)
+	fmt.Println(paritions)
+	paritions = distributed_log_querier.GetFairPartitions(1313, 3)
+	fmt.Println(paritions)
+}
+
+func testBufferWritingFunctionality(t *testing.T) {
+
+	bufferMap := make(map[string]string)
+	for i := 0; i < 10; i++ {
+		bufferMap["key"+ strconv.Itoa(i)] = "value" + strconv.Itoa(i)
+	}
+	for key, value := range bufferMap {
+		fmt.Println("Key: ", key, "Value: ", value)
+	}
+	
+	for i := 0; i < 10; i++ {
+		
+		formatted_buffer := distributed_log_querier.FormatAsBuffer(bufferMap)
+		//write to the file 
+		distributed_log_querier.WriteBufferToFileTestOnly(formatted_buffer, "test.txt")
+		//read from the file
+		bufferMapCurrent, error := distributed_log_querier.ReadLastBuffer("test.txt")
+		if error != nil {
+			fmt.Println("Error reading buffer from file" , error)
+		}
+		//get buffer map length 
+		bufferlength:= getMapLength(bufferMapCurrent)
+		if bufferlength == 10 - i{
+			fmt.Println("Test Passed", bufferlength)
+		}else{
+			fmt.Println("Test Failed", bufferlength)
+		}
+		//remove the last element from the buffer
+		
+		delete(bufferMap, "key" + strconv.Itoa(10-i-1))
+	}
+	delete(bufferMap, "key" + strconv.Itoa(0))
+	distributed_log_querier.WriteBufferToFileTestOnly(distributed_log_querier.FormatAsBuffer(bufferMap), "test.txt")
+	//try reading on an empty buffer
+	_, error := distributed_log_querier.ReadLastBuffer("test.txt")
+	if error != nil {
+		fmt.Println("Error reading buffer from file" , error)
+	}else{
+		fmt.Println("Test Failed")
+	}
 }
 
 
+func countLinesFromFile(t *testing.T) (int, error) {
+	fileName := "test.txt"
+	//read from fetched dir 
+	dir := distributed_log_querier.GetDistributedLogQuerierDir()
+	filePath := filepath.Join(dir, "Fetched", fileName)
+	file, err := os.Open(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	count := 0
+	buf := make([]byte, 32*1024)
+	lineSep := []byte{'\n'}
+
+	for {
+		c, err := file.Read(buf)
+		count += bytes.Count(buf[:c], lineSep)
+
+		switch {
+		case err == io.EOF:
+			return count, nil
+		case err != nil:
+			return count, err
+		}
+	}	
+}
+
+
+
+func testLocalOperatorRunSplitLine(t *testing.T) {
+	ip_string := "hello world this is a test"
+	output := distributed_log_querier.RunOperator("split_operator", ip_string)
+	var splitMap []string
+	err := json.Unmarshal([]byte(output), &splitMap)
+	if err != nil {
+		fmt.Println("Error converting to JSON: ", err)
+	}
+	fmt.Println(splitMap)
+
+}
+
+
+func testLocalOperatorRunWordCount(t *testing.T) {
+	// testOperatorRuns(t)
+	ip_string := "hello"
+	output := distributed_log_querier.RunOperator("count_operator", ip_string)
+	var countMap map[string]int
+	err := json.Unmarshal([]byte(output), &countMap)
+	if err != nil {
+		fmt.Println("Error converting to JSON: ", err)
+	}
+	if !(countMap["hello"] == 1 ){
+		fmt.Println("Test Failed")
+	}
+	ip_string = "hello"
+	output = distributed_log_querier.RunOperator("count_operator", ip_string)
+	err = json.Unmarshal([]byte(output), &countMap)
+	if err != nil {
+		fmt.Println("Error converting to JSON: ", err)
+	}
+	if !(countMap["hello"] == 2 ){
+		fmt.Println("Test Failed")
+	}
+	ip_string = "world"
+	output = distributed_log_querier.RunOperator("count_operator", ip_string)
+	err = json.Unmarshal([]byte(output), &countMap)
+	if err != nil {
+		fmt.Println("Error converting to JSON: ", err)
+	}
+	if !(countMap["world"] == 1 && countMap["hello"] == 2){
+		fmt.Println("Test Failed")
+	}
+
+	//loop for 1000 times with different words
+	for i := 0; i < 1000; i++ {
+		ip_string = "word" + strconv.Itoa(i)
+		output = distributed_log_querier.RunOperator("count_operator", ip_string)
+		err = json.Unmarshal([]byte(output), &countMap)
+		if err != nil {
+			fmt.Println("Error converting to JSON: ", err)
+		}
+		if !(countMap["world"] == 1 && countMap["hello"] == 2 && countMap["word" + strconv.Itoa(i)] == 1){
+			fmt.Println("Test Failed")
+		}
+	}
+
+
+	fmt.Println("Test Passed")
+	
+}
 func testFileAndNodeIdMaptoRing(t *testing.T) {
 	keyTable := sync.Map{}
 // 	ipAddresses := []string{
@@ -114,6 +296,14 @@ func printSyncMap(m *sync.Map) {
 		return true
 	})
 	fmt.Println("*****")
+}
+
+func getMapLength(m map[string]string) int {
+	count := 0
+	for range m {
+		count++
+	}
+	return count
 }
 
 func generateFilenames(count int) []string {

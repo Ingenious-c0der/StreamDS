@@ -18,6 +18,7 @@ var self_id int //node id of the current node
 func getSelf_id() int{
 	return self_id
 }
+
 func handleHyDFS(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTable *sync.Map, fileNameMap *sync.Map,  wg *sync.WaitGroup, m int){
 	//read the message from the connection
 	defer wg.Done()
@@ -275,7 +276,8 @@ func verifyCloseTCPConn(conn net.Conn, wg *sync.WaitGroup){
 	defer conn.Close()
 }
 
-func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTable *sync.Map, fileNameMap *sync.Map, wg *sync.WaitGroup,hyDFSGlobalPort string, m int ){
+//also handles MP4 i.e. stream DS pipeline
+func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTable *sync.Map, fileNameMap *sync.Map,token string, metaConnMap *sync.Map, wg *sync.WaitGroup,hyDFSGlobalPort string, m int ){
 	defer wg.Done()
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
@@ -306,7 +308,14 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 				} else {
 					fmt.Printf("Failed to connect to %s", msg)
 				}
-				// }
+				//TODO implement ringRepair function here
+				//relay the add message to StreamDS layer
+				metaConnMap.Range(func(key, value interface{}) bool {
+					if key != token{
+						sendHyDFSMessage(lc, value.(net.Conn), "ADD " + msg)
+					}
+					return true
+				})
 			}else if strings.Contains(msg, "REMOVE"){
 				msg = strings.Split(msg, " ")[1]
 				//VM MARKER
@@ -323,7 +332,84 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 				}
 				ConnTableRemove(connTable, nodeID)
 				fmt.Println("Removed node " + strconv.Itoa(nodeID) + " at " + msg)
+				//relay the remove message to StreamDS layer
+				//use metaConnMap to distinguish between failure detection connection and streamDS connection
+				metaConnMap.Range(func(key, value interface{}) bool {
+					if key != token{
+						sendHyDFSMessage(lc, value.(net.Conn), "REMOVE " + msg)
+					}
+					return true
+				})
 			
+			}else if strings.Contains(msg, "TASKAPPEND: "){
+				//TASKAPPEND: local_filename hydfs_file_name
+				tokens := strings.Split(msg, " ")
+				local_filename := tokens[2]
+				hyDFSFileName := tokens[3]
+				appendFile(lc, connTable, keyTable, self_id,local_filename, hyDFSFileName, m)
+			}else if strings.Contains(msg, "TASKGET: "){
+				//TASKGET: hydfs_file_name local_filename
+				tokens := strings.Split(msg, " ")
+				hyDFSFileName := tokens[1]
+				local_filename := tokens[2]
+				//trim the newline character
+				hyDFSFileName = strings.Trim(hyDFSFileName, "\n")
+				local_filename = strings.Trim(local_filename, "\n")
+				fileID:= GetFileID(hyDFSFileName,m)
+				getFile(lc, strconv.Itoa(fileID), connTable, keyTable, self_id, self_id)
+				FetchCache(strconv.Itoa(fileID), local_filename, fileNameMap)
+				//notify the connection that the file is now available
+				//check if this works
+				sendHyDFSMessage(lc, conn, "TASKGETRESP: " + hyDFSFileName + " " + local_filename)
+			}else if strings.Contains(msg, "CREATEFILE: "){
+				//CREATEFILE: hydfs_file_name
+				//use an empty file ALWAYS present locally to create the file 
+				tokens := strings.Split(msg, " ")
+				hyDFSFileName := tokens[1]
+				local_filename := "empty.txt" // hardcoded empty file
+				createFile(lc,local_filename, hyDFSFileName, connTable, keyTable, fileNameMap, self_id,  m)
+				fmt.Println("Created file " + hyDFSFileName)
+			}else if strings.HasPrefix(msg, "TASKMERGE: "){
+				//format TASKMERGE: file_name
+				tokens := strings.Split(msg, " ")
+				fileName := tokens[1]
+				fileID := GetFileID(fileName,m)
+							//check if the current node is the COOD for this file
+			cood := GetHyDFSCoordinatorID(keyTable, fileID)
+			if cood == -1{
+				fmt.Println("Not enough keys while checking for COOD")
+				return
+			}
+			if cood == self_id{
+				mergeFile(strconv.Itoa(fileID))
+				//remove self cache for this file
+				removeFile(filepath.Join(GetDistributedLogQuerierDir(), "CacheBay", "cache_" + strconv.Itoa(fileID) + ".txt"))
+				//forward the merge message to the successors
+				x,y := GetHYDFSSuccessorIDs(cood, keyTable)
+				if x == -1 || y == -1{
+					fmt.Println("Error getting the successors for file " + strconv.Itoa(fileID))
+					return
+				}
+				fmt.Println("Successors for file " + strconv.Itoa(fileID) + " are " + strconv.Itoa(x) + " and " + strconv.Itoa(y))
+				//get the conn for these nodes
+				conn_x, okx := connTable.Load(x)
+				if okx{
+					sendHyDFSMessage(lc, conn_x.(net.Conn), "MERGEFILE " + strconv.Itoa(fileID))
+				}
+				conn_y, oky := connTable.Load(y)
+				if oky{
+					sendHyDFSMessage(lc, conn_y.(net.Conn), "MERGEFILE " + strconv.Itoa(fileID))
+				}
+				//broadcast merge message to all the nodes just for cache invalidation
+				broadcastHyDFSMessage(lc, connTable, "MERGED " + strconv.Itoa(fileID))
+			}else{
+				//send the merge message to the COOD
+				cood_conn, ok := connTable.Load(cood)
+				if ok{
+					sendHyDFSMessage(lc, cood_conn.(net.Conn), "MERGEFILE " + strconv.Itoa(fileID))
+				}
+			}
+
 			}
 			//TODO: could do this where we start HyDFS Global operations only once we are connected
 			// to MP2 pipe
@@ -334,7 +420,7 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 }
 }
 
-func StartPipe(lc *LamportClock,pipe_port string, hyDFSGlobalPort string, keyTable *sync.Map, connTable *sync.Map, fileNameMap *sync.Map, wg *sync.WaitGroup, m int){
+func StartPipe(lc *LamportClock,pipe_port string, hyDFSGlobalPort string, keyTable *sync.Map, connTable *sync.Map, fileNameMap *sync.Map, metaConnMap *sync.Map ,wg *sync.WaitGroup, m int){
 	listener, err := net.Listen("tcp", ":"+pipe_port)
 	if err != nil {
 		fmt.Println("Error listening:", err.Error())
@@ -348,7 +434,9 @@ func StartPipe(lc *LamportClock,pipe_port string, hyDFSGlobalPort string, keyTab
 			fmt.Println("Error accepting: ", err.Error())
 			os.Exit(1)
 		}
-		go handleHyDFSMeta(lc, conn, keyTable, connTable, fileNameMap,  wg, hyDFSGlobalPort, m)
+		metaConnMap.Store(conn.RemoteAddr().String(), conn)
+		token:= strconv.Itoa(getSyncMapLength(metaConnMap))
+		go handleHyDFSMeta(lc, conn, keyTable, connTable, fileNameMap, token ,metaConnMap, wg, hyDFSGlobalPort, m)
 	}
 }
 
@@ -586,6 +674,7 @@ func StartHyDFS(hyDFSSelfPort string, hyDFSGlobalPort string, selfAddress  strin
 	m:= 10 
 	self_id = GetPeerID(selfAddress,m)
 	fileNameMap :=sync.Map{}
+	metaConnMap := sync.Map{} // used to distinguish between failure detection connection and streamDS connection
 	//start the routines for HyDFS
 	stopRoutineChan := make(chan struct{})
 	wg.Add(6)
@@ -593,7 +682,7 @@ func StartHyDFS(hyDFSSelfPort string, hyDFSGlobalPort string, selfAddress  strin
 	go CacheBayHandlerRoutine(wg, stopRoutineChan)
 	go ReplicaBayHandlerRoutine(&lc ,&connTable, &keyTable, wg, stopRoutineChan)
 	go ArrivalBayHandlerRoutine(&lc, &connTable, &keyTable,&fileNameMap, wg, stopRoutineChan)
-	go StartPipe(&lc, hyDFSSelfPort,hyDFSGlobalPort, &keyTable, &connTable,&fileNameMap, wg, m)
+	go StartPipe(&lc, hyDFSSelfPort,hyDFSGlobalPort, &keyTable, &connTable,&fileNameMap, &metaConnMap,wg, m)
 	go StartHyDFSListener(&lc, hyDFSGlobalPort, &keyTable, &connTable,&fileNameMap,  wg,m)
 	go SetupHyDFSCommTerminal(&lc, hyDFSGlobalPort, &keyTable, &connTable,&fileNameMap, wg, m,stopRoutineChan)
 	wg.Wait()
