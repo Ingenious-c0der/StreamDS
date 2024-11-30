@@ -16,7 +16,7 @@ import (
 var self_id int //node id of the current node
 
 func getSelf_id() int{
-	return self_id
+	return self_id 
 }
 
 func handleHyDFS(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTable *sync.Map, fileNameMap *sync.Map,  wg *sync.WaitGroup, m int){
@@ -281,6 +281,19 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 	defer wg.Done()
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
+	if getSyncMapLength(keyTable) == 10{
+		fmt.Println("Relaying current state of connections to StreamDS Layer")
+		//the case where mp4 connects after all the joins are done. 
+		//send all the connections to the MP4
+		//iterate over conn table to find remote addr and send it to MP4
+		connTable.Range(func(key, value interface{}) bool {
+			fmt.Println(value.(net.Conn).RemoteAddr().String())
+			sendHyDFSMessage(lc, conn, "ADD " + convertNodeHashForStreamDS(value.(net.Conn).RemoteAddr().String()))
+			return true
+		})
+		fmt.Println("Relayed current state of connections to StreamDS Layer")
+
+	}
 	for {
 		msg, err := readMultilineMessage(reader, "END_OF_MSG")
 		if err != nil {
@@ -295,9 +308,9 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 				msg = strings.Split(msg, " ")[1]
 				//expecting to receive address:UDPport here as token 	
 				//VM MARKER
-				address := strings.Split(msg, ":")[0] 
-				address +=":"+ hyDFSGlobalPort 
-				msg = address
+				// address := strings.Split(msg, ":")[0] 
+				// address +=":"+ hyDFSGlobalPort 
+				// msg = address
 				//VM MARKER END
 				nodeID := GetPeerID(msg, m)
 				fmt.Println("Adding node " + strconv.Itoa(nodeID) + " at " + msg)
@@ -312,16 +325,16 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 				//relay the add message to StreamDS layer
 				metaConnMap.Range(func(key, value interface{}) bool {
 					if key != token{
-						sendHyDFSMessage(lc, value.(net.Conn), "ADD " + msg)
+						sendHyDFSMessage(lc, value.(net.Conn), "ADD " + convertNodeHashForStreamDS(msg))
 					}
 					return true
 				})
 			}else if strings.Contains(msg, "REMOVE"){
 				msg = strings.Split(msg, " ")[1]
 				//VM MARKER
-				address := strings.Split(msg, ":")[0]
-				address += ":"+ hyDFSGlobalPort //TODO: make sure this works out
-				msg = address
+				// address := strings.Split(msg, ":")[0]
+				// address += ":"+ hyDFSGlobalPort //TODO: make sure this works out
+				// msg = address
 				//VM MARKER END
 				nodeID := GetPeerID(msg, m)
 				KeyTableRemove(keyTable, nodeID)
@@ -336,7 +349,7 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 				//use metaConnMap to distinguish between failure detection connection and streamDS connection
 				metaConnMap.Range(func(key, value interface{}) bool {
 					if key != token{
-						sendHyDFSMessage(lc, value.(net.Conn), "REMOVE " + msg)
+						sendHyDFSMessage(lc, value.(net.Conn), "REMOVE " + convertNodeHashForStreamDS(msg))
 					}
 					return true
 				})

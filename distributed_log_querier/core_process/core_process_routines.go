@@ -194,7 +194,7 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                 fileLock.Close() // Release lock
             }
 
-            time.Sleep(2 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(20 * time.Millisecond) // Adjust sleep duration as needed
         }
     }
 }

@@ -5,6 +5,7 @@
 !HYDFS/
 !HYDFS/business/
 !HYDFS/business/*.txt
+!Nuke/Fetched/*.txt
 # Ignore all files in HYDFS/business/ containing 'mb' in the name
 HYDFS/business/*mb.txt
 

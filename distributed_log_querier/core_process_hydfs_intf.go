@@ -1,3 +1,5 @@
+//go:build main3
+// +build main3
 package main 
 
 import (

@@ -42,8 +42,8 @@ type Task struct{
 	TaskReceiveAck bool // if the task has received an ack from the output node
 	DoReplay bool // if the task needs to be replayed
 	TaskAssignedNode int // node id of the node the task is assigned to
-	OutputTaskID int // task id of the task where the output needs to be delivered -1 if not applicable
-	InputTaskID int // task id of the task where the input is coming from -1 if not applicable
+	OutputTaskIDs []int // task id of the task where the output needs to be delivered -1 if not applicable
+	InputTaskID int // task id of the task where the input is coming from empty if not applicable
 }
 
 
@@ -203,7 +203,7 @@ func ReadFilePartition(filename string, start, end int) ([]LineInfo, error) {
     return lines, nil
 }
 
-func NewTask(taskID int, taskNodeID int , taskType string, taskStatus string, taskStage string, taskInputType string, taskOutputType string, taskOutputNodes []string, taskOutputFile string, taskInputFile string, taskPartitionRange string, taskInputNode string, taskState string, taskOperatorName string, taskReceiveAck bool, doReplay bool, TaskOutputID int) *Task {
+func NewTask(taskID int, taskNodeID int , taskType string, taskStatus string, taskStage string, taskInputType string, taskOutputType string, taskOutputNodes []string, taskOutputFile string, taskInputFile string, taskPartitionRange string, taskInputNode string, taskState string, taskOperatorName string, taskReceiveAck bool, doReplay bool, TaskOutputIDs []int) *Task {
 	return &Task{
 		TaskID: taskID,
 		TaskAssignedNode: taskNodeID,
@@ -223,22 +223,22 @@ func NewTask(taskID int, taskNodeID int , taskType string, taskStatus string, ta
 		TaskOperatorName: taskOperatorName,
 		TaskReceiveAck: taskReceiveAck,
 		DoReplay: doReplay,
-		OutputTaskID: TaskOutputID,
+		OutputTaskIDs: TaskOutputIDs, 
 	}
 }
 
-func GetFileFromHydfs(hydfsConn *SafeConn,filename string, waitLatencyMS int){
+func GetFileFromHydfs(hydfsConn *SafeConn,filename string, waitLatencyMS int) bool {
 	message := "TASKGET: " + filename + " " + filename
 	hydfsConn.SafeWrite([]byte (message + "END_OF_MSG\n"))
-	WaitOnFile(filename, waitLatencyMS)
+	return WaitOnFile(filename, waitLatencyMS)
 }
 
 
 func GetNodeWithLeastTasks(streamTaskTable *sync.Map) int {
-	minTasks := 100000
+	minTasks := 100000 
 	minNode := -1
 	streamTaskTable.Range(func(k, v interface{}) bool {
-		tasks := v.([]Task)
+		tasks := v.([]*Task)
 		if len(tasks) < minTasks {
 			minTasks = len(tasks)
 			minNode = k.(int)
@@ -249,17 +249,25 @@ func GetNodeWithLeastTasks(streamTaskTable *sync.Map) int {
 }
 
 //blocks till the file is available in the fetched folder
-func WaitOnFile(fileName string, milliseconds int){
-	dir := GetDistributedLogQuerierDir()
-	fetched_dir := filepath.Join(dir, "Fetched")
-	filePath := filepath.Join(fetched_dir, fileName)
-	for {
-		if _, err := os.Stat(filePath); err == nil {
-			break
-		}
-		time.Sleep( time.Duration(milliseconds) * time.Millisecond)
-	}
+func WaitOnFile(fileName string, milliseconds int) bool {
+    dir := GetDistributedLogQuerierDir()
+    fetched_dir := filepath.Join(dir, "Fetched")
+    filePath := filepath.Join(fetched_dir, fileName)
+    
+    timeout := time.After(10 * time.Second)
+    tick := time.Tick(time.Duration(milliseconds) * time.Millisecond)
 
+    for {
+        select {
+        case <-timeout:
+            fmt.Printf("Timeout waiting for file: %s\n", fileName)
+            return false
+        case <-tick:
+            if _, err := os.Stat(filePath); err == nil {
+                return true
+            }
+        }
+    }
 }
 
 func FormatAsOutput(input map[string]string, taskID int) string{
@@ -639,19 +647,6 @@ func CountLines(fileName string) (int, error) {
         }
     }
 }
-
-func writeBufferToHydfs(hydfsConn *SafeConn, content string) {
-	invokeAppendHydfs(hydfsConn, content)
-}
-
-func invokeAppendHydfs(hydfsConn *SafeConn, message string) {
-	//todoNew handle this connection
-	_, err := hydfsConn.SafeWrite([]byte(message + "\n"))
-	if err != nil {
-		fmt.Println("Error writing to HYDFS:", err)
-	}
-}
-
 
 func RunOperator(operator_name string, input string) string {
 	operator_dir := GetOperatorsDir()
@@ -1472,12 +1467,14 @@ func GetHyDFSCoordinatorID(keyTable * sync.Map, fileID int) int {
 }
 
 //used by stage1 to map the hash to the node
-func MapWordToNode(word string, m int, nodeIDs []int) int {
+func MapWordToNodeAndTask(word string, m int, nodeIDs []int, taskIDs [] int) (int,int) {
 	//first find word hash
 	word_ID := GetFileID(word, m)
 	//find the nodeID
-	nodeID := nodeIDs[word_ID % len(nodeIDs)]
-	return nodeID
+	index:= word_ID % len(nodeIDs)
+	nodeID := nodeIDs[index]
+	taskID := taskIDs[index]
+	return nodeID, taskID
 
 }
 
@@ -1662,13 +1659,13 @@ func GetDistributedLogQuerierDir() string{
 	_,currentFile,_,_ := runtime.Caller(0)
 	dir := filepath.Dir(currentFile) //core_process
 	dir  = filepath.Dir(dir) //distributed_log_querier
-	dir = filepath.Dir(dir) // G28
-	dir = filepath.Join(dir, "HYDFS") // G28/HYDFS
+	dir = filepath.Dir(dir) // G28 
+	//dir = filepath.Join(dir, "HYDFS") // G28/HYDFS
 	//fmt.Println("Directory for HYDFS original " + dir)
 	//VM MARKER
-	//self_id := getSelf_id()
-	//dir = filepath.Join(dir, "Nuke")
-	//dir = filepath.Join(dir, "Node" + strconv.Itoa(self_id))
+	self_id := getSelf_id()
+	dir = filepath.Join(dir, "Nuke")
+	dir = filepath.Join(dir, "Node" + strconv.Itoa(self_id))
 	//END VM MARKER
 	//create the directory if it does not exist
 	for _, dirSub := range []string{"FileBay", "appendBay", "ReplicaBay", "CacheBay", "ArrivalBay", "business", "temp", "Fetched"}{
@@ -1678,19 +1675,24 @@ func GetDistributedLogQuerierDir() string{
 		}
 	}
 	//VM MARKER
-	// if _, err := os.Stat(dir); os.IsNotExist(err) {
-	// 	os.Mkdir(dir, 0755)
-	// 	fmt.Println("Directory created at " + dir)
-	// 	//create the file bay, append bay, replica bay, cache bay
-	// 	os.Mkdir(filepath.Join(dir, "FileBay"), 0755)
-	// 	os.Mkdir(filepath.Join(dir, "appendBay"), 0755)
-	// 	os.Mkdir(filepath.Join(dir, "ReplicaBay"), 0755)
-	// 	os.Mkdir(filepath.Join(dir, "CacheBay"), 0755)
-	// 	os.Mkdir(filepath.Join(dir, "ArrivalBay"), 0755)
-	// 	os.Mkdir(filepath.Join(dir, "business"), 0755)
-	// 	os.Mkdir(filepath.Join(dir, "temp"), 0755)
-	// 	os.Mkdir(filepath.Join(dir, "Fetched"), 0755)
-	// }
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		os.Mkdir(dir, 0755)
+		fmt.Println("Directory created at " + dir)
+		//create the file bay, append bay, replica bay, cache bay
+		os.Mkdir(filepath.Join(dir, "FileBay"), 0755)
+		os.Mkdir(filepath.Join(dir, "appendBay"), 0755)
+		os.Mkdir(filepath.Join(dir, "ReplicaBay"), 0755)
+		os.Mkdir(filepath.Join(dir, "CacheBay"), 0755)
+		os.Mkdir(filepath.Join(dir, "ArrivalBay"), 0755)
+		os.Mkdir(filepath.Join(dir, "business"), 0755)
+		os.Mkdir(filepath.Join(dir, "temp"), 0755)
+		os.Mkdir(filepath.Join(dir, "Fetched"), 0755)
+	}
+	//create an empty.txt file by default in the business directory
+	emptyFile := filepath.Join(dir, "business", "empty.txt")
+	if _, err := os.Stat(emptyFile); os.IsNotExist(err) {
+		os.Create(emptyFile)
+	}
 	//END VM MARKER
 	return dir
 }
@@ -1731,18 +1733,34 @@ func sendUpdateToHYDFS(hydfsConn *SafeConn, message string){
 func convertNodeHashForHYDFS(nodeHash string) string {
 	token := strings.Split(nodeHash, "-")[0]
 	//VM MARKER
-	// port := strings.Split(token, ":")[1]
-	// address:= strings.Split(token, ":")[0]
-	// a_int, err :=strconv.Atoi(port)
-	// if err != nil {
-	// 	fmt.Println("Error in converting string to int in port")
-	// 	return ""
-	// }
-	// a_int = a_int - 2020
-	//return address + ":" + strconv.Itoa(a_int)
+	port := strings.Split(token, ":")[1]
+	address:= strings.Split(token, ":")[0]
+	a_int, err :=strconv.Atoi(port)
+	if err != nil {
+		fmt.Println("Error in converting string to int in port")
+		return ""
+	}
+	a_int = a_int - 2020
+	return address + ":" + strconv.Itoa(a_int)
 	//END VM MARKER
-	return token 
+	//return token 
 	
+}
+
+func convertNodeHashForStreamDS(nodeHash string) string{
+	token:= strings.Split(nodeHash, "-")[0]
+	//VM MARKER stream DS
+	port := strings.Split(token, ":")[1]
+	address:= strings.Split(token, ":")[0]
+	a_int, err :=strconv.Atoi(port)
+	if err != nil {
+		fmt.Println("Error in converting string to int in port")
+		return ""
+	}
+	a_int = a_int +3030
+	return address + ":" + strconv.Itoa(a_int)
+	//END VM MARKER
+	//return token
 }
 
 //function expects the Sync.Map to be key (nodehash):string, value (status): string 
@@ -1788,6 +1806,18 @@ func GetIncarnationNum(membershipList *sync.Map, nodeHash string) int {
 	}else {
 		return -1
 	}
+}
+
+func subtractStrings(a string, b int) string{
+	//convert a to int and the subtract b from it
+	//return the result as string
+	a_int, err :=strconv.Atoi(a)
+	if err != nil {
+		fmt.Println("Error in converting string to int in subtract strings")
+		return ""
+	}
+	a_int = a_int - b
+	return strconv.Itoa(a_int)
 }
 
 func GetStatus(membershipList *sync.Map, nodeHash string) string {

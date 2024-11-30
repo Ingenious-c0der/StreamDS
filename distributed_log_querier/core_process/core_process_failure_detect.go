@@ -147,54 +147,6 @@ func communicateWithAPacketDropChance(dropChance int, message string, addr *net.
 	communicateUDPToPeer(message, addr)
 }
 
-//ommunicateUDPToPeer sends a message to the specified peer address via UDP.
-func communicateUDPToPeer(message string, addr *net.UDPAddr, pass_self ...bool) {
-	// Resolve the UDP connection
-
-	if len(pass_self) > 0 {
-
-		selfAddressStr := GetAddressfromHash(&self_hash) // Assuming this returns a string like "ip:port"
-		selfAddress, err := net.ResolveUDPAddr("udp", selfAddressStr)
-		if err != nil {
-			fmt.Println("Error resolving self address:", err)
-			return
-		}
-		conn, err := net.DialUDP("udp", selfAddress, addr)
-		if err != nil {
-			fmt.Println("Error creating UDP connection:", err)
-			return
-		}
-		defer conn.Close()
-
-		// Convert the message to bytes
-		_, err = conn.Write([]byte(message))
-		if err != nil {
-			fmt.Println("Error sending message:", err)
-			return
-		}
-
-		//fmt.Printf("Sent message: '%s' to %s\n", message, addr.String())
-	} else {
-		conn, err := net.DialUDP("udp", nil, addr)
-		if err != nil {
-			fmt.Println("Error creating UDP connection:", err)
-			return
-		}
-		defer conn.Close()
-
-		// Convert the message to bytes
-		_, err = conn.Write([]byte(message))
-		if err != nil {
-			fmt.Println("Error sending message:", err)
-			return
-		}
-
-		//trackBandwidth(len(message), true)
-
-		//fmt.Printf("Sent message: '%s' to %s\n", message, addr.String())
-	}
-
-}
 // func communicateUDPToPeer(message string, addr *net.UDPAddr, pass_self ...bool) {
 // 	messageSize := len(message)
 // 	currentTime := time.Now()
@@ -341,6 +293,7 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, p
 	//trim message
 	message = strings.TrimSpace(message)
 	if strings.Contains(message, "INTRO") && !strings.Contains(message, "INTROACK") {
+		
 		membershipData := GetMembershipList(membershipList)
 		membershipDataJson, err := json.Marshal(membershipData)
 		if err != nil {
@@ -357,6 +310,7 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, p
 			return
 		}
 		nodeHashnew := strings.Join(tokens[1:3], "-")
+		
 		fmt.Println("Node Hash New + Incarnation num -> ", nodeHashnew, " ", nodeIncarnationNumber)
 		_, ok := membershipList.Load(nodeHashnew)
 		if ok {
@@ -369,9 +323,17 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, p
 		AddToMembershipList(membershipList, nodeHashnew, nodeIncarnationNumber, hydfsConn)
 		//fmt.Println("Should have added new node hash to membership list")
 		WriteLog(logFileName, "JOINED "+nodeHashnew)
-
+		//send the reply to the right address 
+		reply_address := tokens[1]
+		fmt.Println("Reply Address -> ", reply_address)
+		//create net.UDPAddr
+		reply_addr, err := net.ResolveUDPAddr("udp", reply_address)
+		if err != nil {
+			fmt.Println("Error resolving UDP address:", err)
+			return
+		}
 		//reply to the new node with the membership list
-		communicateUDPToPeer(string(msg_string), addr)
+		communicateUDPToPeer(string(msg_string),reply_addr )
 		fmt.Println("Sent INTROACK message to ", addr.String())
 		//send message to subset nodes to update their membership list
 		multicastUDPToPeers("UPD$ADD$"+nodeHashnew+"$"+strconv.Itoa(nodeIncarnationNumber), subsetList)
@@ -583,29 +545,61 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, p
 	}
 }
 
-func StartUDPListener(port int, peerStatus *sync.Map, peerLastPinged *sync.Map, membershipList *sync.Map, hydfsConn *SafeConn) {
-	address := net.UDPAddr{
-		Port: port,
-		IP:   net.ParseIP("0.0.0.0"),
-	}
-	conn, err := net.ListenUDP("udp", &address)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	defer conn.Close()
-	fmt.Printf("Listening for UDP packets on port %d...\n", port)
-	buf := make([]byte, 1024)
-	for {
-		n, addr, err := conn.ReadFromUDP(buf)
-		if err != nil {
-			fmt.Printf("Error reading from UDP connection: %v", err)
-			continue
-		}
-		go handleUDPMessage(string(buf[:n]), addr, peerStatus, peerLastPinged, membershipList, hydfsConn)
-	}
+// func StartUDPListener(port int, peerStatus *sync.Map, peerLastPinged *sync.Map, membershipList *sync.Map, hydfsConn *SafeConn) {
+// 	address := net.UDPAddr{
+// 		Port: port,
+// 		IP:   net.ParseIP("0.0.0.0"),
+// 	}
+// 	conn, err := net.ListenUDP("udp", &address)
+// 	if err != nil {
+// 		fmt.Println(err)
+// 		os.Exit(1)
+// 	}
+// 	defer conn.Close()
+// 	fmt.Printf("Listening for UDP packets on port %d...\n", port)
+// 	buf := make([]byte, 1024)
+// 	for {
+// 		n, addr, err := conn.ReadFromUDP(buf)
+// 		if err != nil {
+// 			fmt.Printf("Error reading from UDP connection: %v", err)
+// 			continue
+// 		}
+// 		go handleUDPMessage(string(buf[:n]), addr, peerStatus, peerLastPinged, membershipList, hydfsConn)
+// 	}
 
-}
+// }
+
+
+
+
+// func StartUDPListener(startPort int, peerStatus *sync.Map, peerLastPinged *sync.Map, membershipList *sync.Map, hydfsConn *SafeConn) {
+//     maxRetries := 10
+//     for retry := 0; retry < maxRetries; retry++ {
+//         port := startPort 
+//         address := net.UDPAddr{
+//             Port: port,
+//             IP:   net.ParseIP("0.0.0.0"),
+//         }
+//         conn, err := net.ListenUDP("udp", &address)
+//         if err == nil {
+//             defer conn.Close()
+// 			fmt.Printf("Listening for UDP packets on port %d...\n", port)
+// 			buf := make([]byte, 1024)
+// 			for {
+// 				n, addr, err := conn.ReadFromUDP(buf)
+// 				if err != nil {
+// 					fmt.Printf("Error reading from UDP connection: %v", err)
+// 					continue
+// 				}
+// 				go handleUDPMessage(string(buf[:n]), addr, peerStatus, peerLastPinged, membershipList, hydfsConn)
+// 			}
+//         }
+//         fmt.Printf("Failed to bind to port %d: %v\n", port, err)
+// 		time.Sleep(1 * time.Second)
+//     }
+//     fmt.Println("Failed to find an available port after", maxRetries, "attempts")
+//     os.Exit(1)
+// }
 
 // Check for timeouts in a separate goroutine
 func monitorPingTimeouts(mode *string, peerStatus *sync.Map, peerLastPinged *sync.Map, membershipList *sync.Map, hydfsConn *SafeConn) {
@@ -807,6 +801,30 @@ func SetupTerminal(wg *sync.WaitGroup, membershipList *sync.Map) {
 	}
 }
 
+//ommunicateUDPToPeer sends a message to the specified peer address via UDP.
+func communicateUDPToPeer(message string, addr *net.UDPAddr) {
+
+		conn, err := net.DialUDP("udp", nil, addr)
+		if err != nil {
+			fmt.Println("Error creating UDP connection:", err)
+			return
+		}
+		defer conn.Close()
+
+		// Convert the message to bytes
+		_, err = conn.Write([]byte(message))
+		if err != nil {
+			fmt.Println("Error sending message:", err)
+			return
+		}
+
+		//trackBandwidth(len(message), true)
+
+		//fmt.Printf("Sent message: '%s' to %s\n", message, addr.String())
+	
+
+}
+
 func StartSelfPipeHYDFS(selfPipePort string) *SafeConn {
 	conn, err := net.Dial("tcp", "localhost:"+selfPipePort)
 	if err != nil {
@@ -816,7 +834,40 @@ func StartSelfPipeHYDFS(selfPipePort string) *SafeConn {
 	safeConn := &SafeConn{conn: conn}
 	return safeConn
 }
+func StartUDPListenerSecond(startPort int) *net.UDPConn {
+	maxRetries := 10
+    for retry := 0; retry < maxRetries; retry++ {
+        port := startPort 
+        address := net.UDPAddr{
+            Port: port,
+            IP:   net.ParseIP("0.0.0.0"),
+        }
+        conn, err := net.ListenUDP("udp", &address)
+        if err == nil {
+			fmt.Printf("Listening for UDP packets on port %d...\n", port)
+            return conn
+        }
+        fmt.Printf("Failed to bind to port %d: %v\n", port, err)
+		time.Sleep(1 * time.Second)
+    }
+    fmt.Println("Failed to find an available port after", maxRetries, "attempts")
+    os.Exit(1)
+	return nil 
 
+}
+
+func HandleUDPConnections(conn *net.UDPConn, peerStatus *sync.Map, peerLastPinged *sync.Map, membershipList *sync.Map, hydfsConn *SafeConn) {
+	defer conn.Close()
+	buf := make([]byte, 1024)
+	for {
+		n, addr, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			fmt.Printf("Error reading from UDP connection: %v", err)
+			continue
+		}
+		go handleUDPMessage(string(buf[:n]), addr, peerStatus, peerLastPinged, membershipList, hydfsConn)
+	}
+}
 
 func Startup(introducer_address string, version string, port string, log_file string, is_introducer bool, wg *sync.WaitGroup, hydfsConn *SafeConn) {
 
@@ -847,7 +898,13 @@ func Startup(introducer_address string, version string, port string, log_file st
 	if is_introducer {
 		self_hash = GetOutboundIP().String() + ":" + port + "-" + version
 		AddToMembershipList(&membershipList, self_hash, self_incarnationNumber, hydfsConn)
-		go StartUDPListener(port_int, &peerStatus, &peerLastPinged, &membershipList, hydfsConn)
+		fmt.Println("Self Hash -> ", self_hash)
+		conn := StartUDPListenerSecond(port_int)
+		if conn == nil {
+			fmt.Println("Error starting UDP listener")
+			os.Exit(1)
+		}
+		go HandleUDPConnections(conn, &peerStatus, &peerLastPinged, &membershipList, hydfsConn)
 	} else {
 		{
 			addr, err := net.ResolveUDPAddr("udp", introducer_address)
@@ -861,10 +918,15 @@ func Startup(introducer_address string, version string, port string, log_file st
 			self_intro_message := "INTRO$" + GetOutboundIP().String() + ":" + port + "$" + version + "$" + strconv.Itoa(self_incarnationNumber)
 			self_hash = GetOutboundIP().String() + ":" + port + "-" + version
 			AddToMembershipList(&membershipList, self_hash, self_incarnationNumber, hydfsConn)
-			go StartUDPListener(port_int, &peerStatus, &peerLastPinged, &membershipList, hydfsConn)
+			conn:= StartUDPListenerSecond(port_int)
+			if conn == nil {
+				fmt.Println("Error starting UDP listener")
+				os.Exit(1)
+			}
+			go HandleUDPConnections(conn, &peerStatus, &peerLastPinged, &membershipList, hydfsConn)
 			for retries > 0 {
 				// Send intro message to the introducer
-				communicateUDPToPeer(self_intro_message, addr, true)
+				communicateUDPToPeer(self_intro_message, addr)
 				// Wait for INTROACK for 3 seconds
 				timeout := time.After(3 * time.Second)
 				select {
