@@ -147,67 +147,6 @@ func communicateWithAPacketDropChance(dropChance int, message string, addr *net.
 	communicateUDPToPeer(message, addr)
 }
 
-// func communicateUDPToPeer(message string, addr *net.UDPAddr, pass_self ...bool) {
-// 	messageSize := len(message)
-// 	currentTime := time.Now()
-
-// 	// Check if we are in a new second
-// 	if currentTime.Sub(lastSendTime).Seconds() >= 1 {
-// 		// Reset the byte counter for the new second
-// 		bytesSentThisSecond = 0
-// 		lastSendTime = currentTime
-// 	}
-
-// 	// Check if sending this message would exceed the bandwidth limit
-// 	if bytesSentThisSecond+messageSize > maxBytesPerSecond {
-// 		//fmt.Printf("Skipping message to %s as bandwidth limit is reached (sent %d bytes out of %d allowed)\n",
-// 		//	addr.String(), bytesSentThisSecond, maxBytesPerSecond)
-// 		fmt.Println("Skippy")
-// 		return // Skip sending the message
-// 	}
-
-// 	// Proceed to send message if within the bandwidth limit
-// 	if len(pass_self) > 0 {
-// 		selfAddressStr := GetAddressfromHash(&self_hash)
-// 		selfAddress, err := net.ResolveUDPAddr("udp", selfAddressStr)
-// 		if err != nil {
-// 			fmt.Println("Error resolving self address:", err)
-// 			return
-// 		}
-// 		conn, err := net.DialUDP("udp", selfAddress, addr)
-// 		if err != nil {
-// 			fmt.Println("Error creating UDP connection:", err)
-// 			return
-// 		}
-// 		defer conn.Close()
-
-// 		_, err = conn.Write([]byte(message))
-// 		if err != nil {
-// 			fmt.Println("Error sending message:", err)
-// 			return
-// 		}
-// 	} else {
-// 		conn, err := net.DialUDP("udp", nil, addr)
-// 		if err != nil {
-// 			fmt.Println("Error creating UDP connection:", err)
-// 			return
-// 		}
-// 		defer conn.Close()
-
-// 		_, err = conn.Write([]byte(message))
-// 		if err != nil {
-// 			fmt.Println("Error sending message:", err)
-// 			return
-// 		}
-
-// 		trackBandwidth(messageSize, true)
-// 	}
-
-// 	// Update the bytes sent in the current second
-// 	bytesSentThisSecond += messageSize
-// 	//fmt.Printf("Sent message to %s: %d bytes (total %d bytes this second)\n",
-// 		//addr.String(), messageSize, bytesSentThisSecond)
-// }
 
 // multicastUDPToPeers sends a message to multiple peers via UDP.
 func multicastUDPToPeers(message string, addresses []string) {
@@ -545,62 +484,6 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, p
 	}
 }
 
-// func StartUDPListener(port int, peerStatus *sync.Map, peerLastPinged *sync.Map, membershipList *sync.Map, hydfsConn *SafeConn) {
-// 	address := net.UDPAddr{
-// 		Port: port,
-// 		IP:   net.ParseIP("0.0.0.0"),
-// 	}
-// 	conn, err := net.ListenUDP("udp", &address)
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		os.Exit(1)
-// 	}
-// 	defer conn.Close()
-// 	fmt.Printf("Listening for UDP packets on port %d...\n", port)
-// 	buf := make([]byte, 1024)
-// 	for {
-// 		n, addr, err := conn.ReadFromUDP(buf)
-// 		if err != nil {
-// 			fmt.Printf("Error reading from UDP connection: %v", err)
-// 			continue
-// 		}
-// 		go handleUDPMessage(string(buf[:n]), addr, peerStatus, peerLastPinged, membershipList, hydfsConn)
-// 	}
-
-// }
-
-
-
-
-// func StartUDPListener(startPort int, peerStatus *sync.Map, peerLastPinged *sync.Map, membershipList *sync.Map, hydfsConn *SafeConn) {
-//     maxRetries := 10
-//     for retry := 0; retry < maxRetries; retry++ {
-//         port := startPort 
-//         address := net.UDPAddr{
-//             Port: port,
-//             IP:   net.ParseIP("0.0.0.0"),
-//         }
-//         conn, err := net.ListenUDP("udp", &address)
-//         if err == nil {
-//             defer conn.Close()
-// 			fmt.Printf("Listening for UDP packets on port %d...\n", port)
-// 			buf := make([]byte, 1024)
-// 			for {
-// 				n, addr, err := conn.ReadFromUDP(buf)
-// 				if err != nil {
-// 					fmt.Printf("Error reading from UDP connection: %v", err)
-// 					continue
-// 				}
-// 				go handleUDPMessage(string(buf[:n]), addr, peerStatus, peerLastPinged, membershipList, hydfsConn)
-// 			}
-//         }
-//         fmt.Printf("Failed to bind to port %d: %v\n", port, err)
-// 		time.Sleep(1 * time.Second)
-//     }
-//     fmt.Println("Failed to find an available port after", maxRetries, "attempts")
-//     os.Exit(1)
-// }
-
 // Check for timeouts in a separate goroutine
 func monitorPingTimeouts(mode *string, peerStatus *sync.Map, peerLastPinged *sync.Map, membershipList *sync.Map, hydfsConn *SafeConn) {
 	for {
@@ -821,8 +704,6 @@ func communicateUDPToPeer(message string, addr *net.UDPAddr) {
 		//trackBandwidth(len(message), true)
 
 		//fmt.Printf("Sent message: '%s' to %s\n", message, addr.String())
-	
-
 }
 
 func StartSelfPipeHYDFS(selfPipePort string) *SafeConn {
@@ -834,7 +715,7 @@ func StartSelfPipeHYDFS(selfPipePort string) *SafeConn {
 	safeConn := &SafeConn{conn: conn}
 	return safeConn
 }
-func StartUDPListenerSecond(startPort int) *net.UDPConn {
+func StartUDPListener(startPort int) *net.UDPConn {
 	maxRetries := 10
     for retry := 0; retry < maxRetries; retry++ {
         port := startPort 
@@ -899,7 +780,7 @@ func Startup(introducer_address string, version string, port string, log_file st
 		self_hash = GetOutboundIP().String() + ":" + port + "-" + version
 		AddToMembershipList(&membershipList, self_hash, self_incarnationNumber, hydfsConn)
 		fmt.Println("Self Hash -> ", self_hash)
-		conn := StartUDPListenerSecond(port_int)
+		conn := StartUDPListener(port_int)
 		if conn == nil {
 			fmt.Println("Error starting UDP listener")
 			os.Exit(1)
@@ -918,7 +799,7 @@ func Startup(introducer_address string, version string, port string, log_file st
 			self_intro_message := "INTRO$" + GetOutboundIP().String() + ":" + port + "$" + version + "$" + strconv.Itoa(self_incarnationNumber)
 			self_hash = GetOutboundIP().String() + ":" + port + "-" + version
 			AddToMembershipList(&membershipList, self_hash, self_incarnationNumber, hydfsConn)
-			conn:= StartUDPListenerSecond(port_int)
+			conn:= StartUDPListener(port_int)
 			if conn == nil {
 				fmt.Println("Error starting UDP listener")
 				os.Exit(1)
