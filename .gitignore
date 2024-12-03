@@ -1,6 +1,7 @@
 *.log
 *.txt
 *.py
+distributed_log_querier/operators/operators_parallel/*
 # But not the ones in HYDFS/business
 !HYDFS/
 !HYDFS/business/

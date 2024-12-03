@@ -58,7 +58,7 @@ func FileBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}, keytabl
                     sendHyDFSMessage(lc, y_conn.(net.Conn), "REPEXIST " + strconv.Itoa(fileID))
                 }
             }
-            time.Sleep(5 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(2 * time.Second) // Adjust sleep duration as needed
         }
     }
 }
@@ -194,7 +194,7 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                 fileLock.Close() // Release lock
             }
 
-            time.Sleep(20 * time.Millisecond) // Adjust sleep duration as needed
+            time.Sleep(10 * time.Millisecond) // Adjust sleep duration as needed
         }
     }
 }
@@ -307,7 +307,7 @@ func ReplicaBayHandlerRoutine(lc *LamportClock, connTable *sync.Map, keyTable *s
                 }
             }
 
-            time.Sleep(5 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(2 * time.Second) // Adjust sleep duration as needed
         }
     }
 }
@@ -329,7 +329,7 @@ func FetchCache(fileID string, downloadName string, fileNameMap *sync.Map) {
 
     // Set a timeout duration (20 seconds)
     timeout := time.After(20 * time.Second)
-    ticker := time.NewTicker(1 * time.Second) // Check every second
+    ticker := time.NewTicker(20 * time.Millisecond) // Check every second
 
     defer ticker.Stop()
 

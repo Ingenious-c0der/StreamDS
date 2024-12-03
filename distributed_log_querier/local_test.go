@@ -33,7 +33,16 @@ func TestLocalTesting(t *testing.T) {
 	//testLoops(t)
 	//testReadPartitioning(t)
 	//testLocalOperatorRunSplitLine(t)
-	testLocalOperatorRunWordCount(t)
+	//testLocalOperatorRunWordCount(t)
+	testDistinctNBuffersRead(t)
+}
+
+func testDistinctNBuffersRead(t *testing.T) {
+	output, error := distributed_log_querier.GetLastNDistinctTaskBuffers("output.txt", 3)
+	if error != nil {
+		fmt.Println("Error reading file: ", error)
+	}
+	fmt.Println(output)
 }
 
 func testReadPartitioning(t *testing.T) {
@@ -141,7 +150,7 @@ func countLinesFromFile(t *testing.T) (int, error) {
 
 func testLocalOperatorRunSplitLine(t *testing.T) {
 	ip_string := "hello world this is a test"
-	output := distributed_log_querier.RunOperator("split_operator", ip_string)
+	output := distributed_log_querier.RunOperatorlocal("split_operator", ip_string,0)
 	var splitMap []string
 	err := json.Unmarshal([]byte(output), &splitMap)
 	if err != nil {
@@ -155,7 +164,8 @@ func testLocalOperatorRunSplitLine(t *testing.T) {
 func testLocalOperatorRunWordCount(t *testing.T) {
 	// testOperatorRuns(t)
 	ip_string := "hello"
-	output := distributed_log_querier.RunOperator("count_operator", ip_string)
+	output := distributed_log_querier.RunOperatorlocal("count_operator", ip_string,0)
+	fmt.Println(output)
 	var countMap map[string]int
 	err := json.Unmarshal([]byte(output), &countMap)
 	if err != nil {
@@ -165,7 +175,7 @@ func testLocalOperatorRunWordCount(t *testing.T) {
 		fmt.Println("Test Failed")
 	}
 	ip_string = "hello"
-	output = distributed_log_querier.RunOperator("count_operator", ip_string)
+	output = distributed_log_querier.RunOperatorlocal("count_operator", ip_string,1)
 	err = json.Unmarshal([]byte(output), &countMap)
 	if err != nil {
 		fmt.Println("Error converting to JSON: ", err)
@@ -174,7 +184,7 @@ func testLocalOperatorRunWordCount(t *testing.T) {
 		fmt.Println("Test Failed")
 	}
 	ip_string = "world"
-	output = distributed_log_querier.RunOperator("count_operator", ip_string)
+	output = distributed_log_querier.RunOperatorlocal("count_operator", ip_string,2)
 	err = json.Unmarshal([]byte(output), &countMap)
 	if err != nil {
 		fmt.Println("Error converting to JSON: ", err)
@@ -186,7 +196,7 @@ func testLocalOperatorRunWordCount(t *testing.T) {
 	//loop for 1000 times with different words
 	for i := 0; i < 1000; i++ {
 		ip_string = "word" + strconv.Itoa(i)
-		output = distributed_log_querier.RunOperator("count_operator", ip_string)
+		output = distributed_log_querier.RunOperatorlocal("count_operator", ip_string,0)
 		err = json.Unmarshal([]byte(output), &countMap)
 		if err != nil {
 			fmt.Println("Error converting to JSON: ", err)

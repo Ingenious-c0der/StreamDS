@@ -357,8 +357,8 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 			}else if strings.Contains(msg, "TASKAPPEND: "){
 				//TASKAPPEND: local_filename hydfs_file_name
 				tokens := strings.Split(msg, " ")
-				local_filename := tokens[2]
-				hyDFSFileName := tokens[3]
+				local_filename := tokens[1]
+				hyDFSFileName := tokens[2]
 				appendFile(lc, connTable, keyTable, self_id,local_filename, hyDFSFileName, m)
 			}else if strings.Contains(msg, "TASKGET: "){
 				//TASKGET: hydfs_file_name local_filename

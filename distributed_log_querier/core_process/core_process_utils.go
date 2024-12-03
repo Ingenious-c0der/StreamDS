@@ -44,6 +44,7 @@ type Task struct{
 	TaskAssignedNode int // node id of the node the task is assigned to
 	OutputTaskIDs []int // task id of the task where the output needs to be delivered -1 if not applicable
 	InputTaskID int // task id of the task where the input is coming from empty if not applicable
+	NumTasks int // only for stage two to recognize when to stop (i.e. after collecting all the completes from previous stages) -1 if not applicable
 }
 
 
@@ -87,6 +88,148 @@ func ExecuteMergeOnHydfs(hydfsConn *SafeConn, filename string) {
 	hydfsConn.SafeWrite([]byte("TASKMERGE: " + filename + "END_OF_MSG\n"))
 }
 
+func ResolveStoredAcks(ret_ack_map *map[string][]LineInfo, streamConnTable *sync.Map){
+	//iterate through the map and send the acks to the respective nodes
+	for nodeID_task_pair, acks := range *ret_ack_map{
+		//get the connection from the streamConnTable
+		nodeID := strings.Split(nodeID_task_pair, "-")[0]
+		taskID := strings.Split(nodeID_task_pair, "-")[1]
+		nodeID_int, err := strconv.Atoi(nodeID)
+		if err != nil{
+			fmt.Println("Error converting nodeID to int")
+			continue
+		}
+		conn, ok := streamConnTable.Load(nodeID_int)
+		if !ok{
+			fmt.Println("Connection not found in the streamConnTable")
+			continue
+		}
+		//fmt.Println("Sending acks to node : ", nodeID, len(acks))
+		//send the acks
+		err2 := sendAckInfoArray(conn.(net.Conn), acks, nodeID, taskID)
+		if err2 != nil{
+			fmt.Println("Error sending acks to node", nodeID)
+		}
+		
+	}
+	//clear the map
+	*ret_ack_map = make(map[string][]LineInfo)
+}
+
+func QuantifyHydfsFile(hydfsConn *SafeConn,hydfsDestFileName string, n int) ([]string, error) {
+	//first execute merge on the file
+	ExecuteMergeOnHydfs(hydfsConn, hydfsDestFileName)
+	//wait for 6 seconds to ensure the merge was successful
+	time.Sleep(6 * time.Second)
+	//then quantify the file
+	GetFileFromHydfs(hydfsConn, hydfsDestFileName, 10)
+	//wait for 1 second
+	time.Sleep(1 * time.Second)
+	// read last n buffers with distinct taskIDs
+	output,error := GetLastNDistinctTaskBuffers(hydfsDestFileName, n)
+	return output, error
+}
+func GetLastNDistinctTaskBuffers(fileName string, n int) ([]string, error) {
+	filePath := filepath.Join(GetDistributedLogQuerierDir(), "Fetched", fileName)
+    file, err := os.Open(filePath)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    taskBuffers := make(map[int]string)
+    var currentBuffer strings.Builder
+    scanner := bufio.NewScanner(file)
+    readingBuffer := false
+    var currentTaskID int
+
+    for scanner.Scan() {
+        line := scanner.Text()
+        if line == "--- BUFFER START ---" {
+            readingBuffer = true
+            currentBuffer.Reset()
+        } else if line == "--- BUFFER END ---" {
+            if readingBuffer {
+                taskBuffers[currentTaskID] = currentBuffer.String()
+            }
+            readingBuffer = false
+        } else if readingBuffer {
+            currentBuffer.WriteString(line + "\n")
+            if strings.HasPrefix(line, "TaskID: ") {
+                currentTaskID, _ = strconv.Atoi(strings.TrimPrefix(line, "TaskID: "))
+            }
+        }
+    }
+
+    if err := scanner.Err(); err != nil {
+        return nil, err
+    }
+
+    lastNBuffers := make([]string, 0, n)
+    for _, buffer := range taskBuffers {
+        lastNBuffers = append(lastNBuffers, buffer)
+        if len(lastNBuffers) > n {
+            lastNBuffers = lastNBuffers[1:]
+        }
+    }
+    return lastNBuffers, nil
+}
+
+// func GetLastNDistinctTaskBuffers(fileName string, n int) ([]map[string]int, error) {
+// 	//dir := GetDistributedLogQuerierDir()
+// 	filePath := filepath.Join("/Users/ingenious/Documents/DSMP1_backup/CS-425-MP/MP1/g28/Nuke/Node721/Fetched", fileName)
+//     file, err := os.Open(filePath)
+//     if err != nil {
+//         return nil, err
+//     }
+//     defer file.Close()
+
+//     taskBuffers := make(map[int]map[string]int)
+//     var currentBuffer strings.Builder
+//     scanner := bufio.NewScanner(file)
+//     readingBuffer := false
+//     var currentTaskID int
+
+//     for scanner.Scan() {
+//         line := scanner.Text()
+//         if line == "--- BUFFER START ---" {
+//             readingBuffer = true
+//             currentBuffer.Reset()
+//         } else if line == "--- BUFFER END ---" {
+//             if readingBuffer {
+//                 var wordCounts map[string]int
+//                 err := json.Unmarshal([]byte(currentBuffer.String()), &wordCounts)
+//                 if err == nil {
+//                     taskBuffers[currentTaskID] = wordCounts
+//                 }
+//             }
+//             readingBuffer = false
+//         } else if readingBuffer {
+//             if strings.HasPrefix(line, "{") {
+//                 currentBuffer.WriteString(line)
+//             } else if strings.HasPrefix(line, "TaskID: ") {
+//                 currentTaskID, _ = strconv.Atoi(strings.TrimPrefix(line, "TaskID: "))
+//             }
+//         }
+//     }
+
+//     if err := scanner.Err(); err != nil {
+//         return nil, err
+//     }
+
+//     lastNBuffers := make([]map[string]int, 0, n)
+//     for _, buffer := range taskBuffers {
+//         lastNBuffers = append(lastNBuffers, buffer)
+//         if len(lastNBuffers) > n {
+//             lastNBuffers = lastNBuffers[1:]
+//         }
+//     }
+
+//     return lastNBuffers, nil
+// }
+
+
+//todo new : does this have to be in business dir
 func PopulateStatefulOperatorFile(state map[string]int, filename string) error {
     // Ensure the directory exists
     dir := GetDistributedLogQuerierDir()
@@ -149,8 +292,9 @@ func deserializeLineInfoArray(data []byte) ([]LineInfo, error) {
 }
 
 func PrintMapToConsole(inputMap map[string]string){
+	fmt.Println("********Output*******")
 	for key, value := range inputMap {
-		fmt.Println("Word ", key, "Count ", value)
+		fmt.Printf("\"%s\" : %v\n", key, value)
 	}
 }
 
@@ -203,7 +347,7 @@ func ReadFilePartition(filename string, start, end int) ([]LineInfo, error) {
     return lines, nil
 }
 
-func NewTask(taskID int, taskNodeID int , taskType string, taskStatus string, taskStage string, taskInputType string, taskOutputType string, taskOutputNodes []string, taskOutputFile string, taskInputFile string, taskPartitionRange string, taskInputNode string, taskState string, taskOperatorName string, taskReceiveAck bool, doReplay bool, TaskOutputIDs []int) *Task {
+func NewTask(taskID int, taskNodeID int , taskType string, taskStatus string, taskStage string, taskInputType string, taskOutputType string, taskOutputNodes []string, taskOutputFile string, taskInputFile string, taskPartitionRange string, taskInputNode string, taskState string, taskOperatorName string, taskReceiveAck bool, doReplay bool, TaskOutputIDs []int, num_tasks int) *Task {
 	return &Task{
 		TaskID: taskID,
 		TaskAssignedNode: taskNodeID,
@@ -224,6 +368,7 @@ func NewTask(taskID int, taskNodeID int , taskType string, taskStatus string, ta
 		TaskReceiveAck: taskReceiveAck,
 		DoReplay: doReplay,
 		OutputTaskIDs: TaskOutputIDs, 
+		NumTasks: num_tasks,
 	}
 }
 
@@ -254,15 +399,16 @@ func WaitOnFile(fileName string, milliseconds int) bool {
     fetched_dir := filepath.Join(dir, "Fetched")
     filePath := filepath.Join(fetched_dir, fileName)
     
-    timeout := time.After(10 * time.Second)
-    tick := time.Tick(time.Duration(milliseconds) * time.Millisecond)
+    timeout := time.After(7 * time.Second)
+    ticker := time.NewTicker(time.Duration(milliseconds) * time.Millisecond)
+    defer ticker.Stop() // Ensure the ticker is stopped when the function 
 
     for {
         select {
         case <-timeout:
             fmt.Printf("Timeout waiting for file: %s\n", fileName)
             return false
-        case <-tick:
+        case <-ticker.C:
             if _, err := os.Stat(filePath); err == nil {
                 return true
             }
@@ -352,7 +498,7 @@ func ReadLastBufferForTask(filename string, taskID int) (map[string]string, erro
     }
     
     dir := GetDistributedLogQuerierDir()
-    fetched_dir := filepath.Join(dir, "fetched")
+    fetched_dir := filepath.Join(dir, "Fetched")
     bufferFile := filepath.Join(fetched_dir, filename)
     
     // Check if file exists
@@ -647,11 +793,10 @@ func CountLines(fileName string) (int, error) {
         }
     }
 }
-
-func RunOperator(operator_name string, input string) string {
-	operator_dir := GetOperatorsDir()
+func RunOperatorlocal(operator_name string, input string, taskID int) string {
+	operator_dir := GetOperatorsDir(taskID)
 	operator_path := filepath.Join(operator_dir, operator_name)
-
+	//fmt.Println("Operator path: ", operator_path)
 	// Create command
 	cmd := exec.Command(operator_path)
 	
@@ -691,6 +836,51 @@ func RunOperator(operator_name string, input string) string {
 	result := strings.TrimSpace(stdout.String())
 	return result
 }
+
+
+// func RunOperator(operator_name string, input string) string {
+// 	operator_dir := GetOperatorsDir()
+// 	operator_path := filepath.Join(operator_dir, operator_name)
+
+// 	// Create command
+// 	cmd := exec.Command(operator_path)
+	
+// 	// Create pipes for stdin, stdout, and stderr
+// 	stdin, err := cmd.StdinPipe()
+// 	if err != nil {
+// 		return fmt.Sprintf("Error creating stdin pipe: %v", err)
+// 	}
+
+// 	// Capture both stdout and stderr
+// 	var stdout, stderr bytes.Buffer
+// 	cmd.Stdout = &stdout
+// 	cmd.Stderr = &stderr
+
+// 	// Start the command
+// 	if err := cmd.Start(); err != nil {
+// 		return fmt.Sprintf("Error starting operator: %v", err)
+// 	}
+
+// 	// Write input to stdin and close it
+// 	_, err = fmt.Fprintln(stdin, input)  // Use Fprintln to add newline
+// 	if err != nil {
+// 		return fmt.Sprintf("Error writing to stdin: %v", err)
+// 	}
+// 	stdin.Close()
+
+// 	// Wait for command to finish
+// 	err = cmd.Wait()
+// 	if err != nil {
+// 		// If there's stderr output, return it
+// 		if stderr.Len() > 0 {
+// 			return fmt.Sprintf("Operator error: %s", stderr.String())
+// 		}
+// 		return fmt.Sprintf("Error running operator: %v", err)
+// 	}
+
+// 	result := strings.TrimSpace(stdout.String())
+// 	return result
+// }
 
 
 func GetHYDFSSuccessorIDs(self_id int, keytable *sync.Map) (int, int){
@@ -1637,7 +1827,7 @@ func GetFileID(filename string, m int) int {
 	bigIntHash := new(big.Int).SetBytes(hashTruncated)
 	bigIntMod := new(big.Int).Lsh(big.NewInt(1), uint(m))
 	fileID := new(big.Int).Mod(bigIntHash, bigIntMod)
-	fmt.Println("FileID: for  " + filename + " is ", int(fileID.Int64()))
+	//fmt.Println("FileID: for  " + filename + " is ", int(fileID.Int64()))
 	return int(fileID.Int64())
 }
 
@@ -1646,11 +1836,13 @@ func GetAddressfromHash(hash *string) string {
 	return tokens[0]
 }
 
-func GetOperatorsDir() string{
+func GetOperatorsDir(taskID int) string{
 	_,currentFile,_,_ := runtime.Caller(0)
 	dir := filepath.Dir(currentFile) //core_process
 	dir  = filepath.Dir(dir) //distributed_log_querier
 	dir = filepath.Join(dir, "operators")
+	dir = filepath.Join(dir, "operators_parallel")
+	dir = filepath.Join(dir, "operator" + strconv.Itoa(taskID))
 	return dir
 }
 
@@ -1692,7 +1884,12 @@ func GetDistributedLogQuerierDir() string{
 	emptyFile := filepath.Join(dir, "business", "empty.txt")
 	if _, err := os.Stat(emptyFile); os.IsNotExist(err) {
 		os.Create(emptyFile)
-	}
+		//write "EMPTYFILE:" to the empty file
+		err := os.WriteFile(emptyFile, []byte("EMPTYFILE: \n"), 0644)
+		if err != nil {
+			fmt.Println("Error writing file:", err)
+		}
+		}
 	//END VM MARKER
 	return dir
 }

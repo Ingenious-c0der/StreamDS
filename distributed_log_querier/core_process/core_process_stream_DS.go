@@ -68,6 +68,7 @@ func planStreamDSTasks(hydfsConn *SafeConn, hydfsSrcFileName string, op1_name st
 			false,
 			false,
 			[]int{},
+			num_tasks,
 		)
 		taskMap[strconv.Itoa(nodeID_selected)] = stage_2_task
 		pre_tasks, ok  := streamTaskTable.Load(nodeID_selected)
@@ -114,6 +115,7 @@ func planStreamDSTasks(hydfsConn *SafeConn, hydfsSrcFileName string, op1_name st
 			true,
 			false,
 			stage_two_task_ids, 
+			num_tasks,
 		)
 		taskMap[strconv.Itoa(nodeID_selected)] = stage_1_task
 		pre_tasks, ok  := streamTaskTable.Load(nodeID_selected)
@@ -150,7 +152,7 @@ func planStreamDSTasks(hydfsConn *SafeConn, hydfsSrcFileName string, op1_name st
 			nodeID_selected,
 			"source",
 			"active",
-			"first",
+			"zero",
 			"file",
 			"single",
 			[]string{output_node},
@@ -163,6 +165,7 @@ func planStreamDSTasks(hydfsConn *SafeConn, hydfsSrcFileName string, op1_name st
 			true,
 			false,
 			[]int{task_output.TaskID},
+			num_tasks,
 			)
 		taskMap[strconv.Itoa(nodeID_selected)] = source_task
 		pre_tasks, ok  := streamTaskTable.Load(nodeID_selected)
@@ -174,12 +177,14 @@ func planStreamDSTasks(hydfsConn *SafeConn, hydfsSrcFileName string, op1_name st
 		}
 	}
 	//create the tasklogFiles for each of the tasks
+	fmt.Println("Creating task log files and output files")
 	for _, task := range taskMap {
 		taskLogFile := task.TaskLogFile
-		hydfsConn.SafeWrite([]byte("CREATEFILE: "+ taskLogFile))
+		hydfsConn.SafeWrite([]byte("CREATEFILE: "+ taskLogFile + "END_OF_MSG\n"))
 	}
 	//create the hydfsDestFile
-	hydfsConn.SafeWrite([]byte("CREATEFILE: "+ hydfsDestFileName))
+	hydfsConn.SafeWrite([]byte("CREATEFILE: "+ hydfsDestFileName + "END_OF_MSG\n"))
+	fmt.Println("Task planning completed")
 	//return the taskMap
 	return taskMap
 }
@@ -218,7 +223,6 @@ func rescheduleStreamDSTaskOnFailure(hydfsConn *SafeConn,FailedNodeID int, strea
 			}
 			sendTask(nodeConn.(net.Conn), *task)
 			fmt.Println("Task "+ strconv.Itoa(task.TaskID) +" rescheduled on node "+ strconv.Itoa(task.TaskAssignedNode))
-			//TODO new: check secondary effects on firstStage tasks since they might ack timeout if the source is lost for a while
 		}else if task.TaskType == "operator" {
 
 			if task.TaskStage == "first" {
@@ -328,7 +332,7 @@ func rescheduleStreamDSTaskOnFailure(hydfsConn *SafeConn,FailedNodeID int, strea
 	}
 }
 
-func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map, streamConnTable *sync.Map,chord chan string, m int){
+func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map,chord chan string, m int){
 	//first carve out the structure of the task 
 	//get the nodeID of the task for validation
 	nodeID:= task.TaskAssignedNode 
@@ -347,8 +351,14 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 		}
 		success := GetFileFromHydfs(hydfsConn, source_file_name, 10)
 		if !success {
-			fmt.Println("Error in getting the file from hydfs")
-			return
+			fmt.Println("Error in getting the file from hydfs, retrying.. ")
+			//retry
+			success = GetFileFromHydfs(hydfsConn, source_file_name, 10)
+			if !success {
+				fmt.Println("Error in getting the file from hydfs max retry")
+				return
+			}
+		
 		}
 		partition := strings.Split(task.TaskPartitionRange, ":")
 		start_line, err1 := strconv.Atoi(partition[0])
@@ -410,7 +420,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 		}
 		//start the send of tuples and receive of ack on the chord channel
 		//also maintain persistent buffer for the tuples
-		batch_size := 10
+		batch_size := 100
 		batch := make([]LineInfo, 0) 
 		bufferMap := make(map[string]string)
 		output_node_ID_string := task.TaskOutputNodes[0]
@@ -425,7 +435,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 			return
 		}
 		lastAckTime := time.Now()
-		ackTimer := time.NewTimer(5 * time.Second)
+		lastSentTime := time.Now()
 		paused := false
 		tupleIndex := 0 
 		for tupleIndex < len(tuples) || len(bufferMap) > 0{
@@ -435,10 +445,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 					//Format ACK: targetNodeId TargetTaskID \n <body>
 					//this will be a batch ack
 					//remove all the tuples from the buffer that have been acked
-					if !ackTimer.Stop() {
-						<-ackTimer.C
-					}
-					ackTimer.Reset(5 * time.Second)
+					//fmt.Println("Rack")
 					parts := strings.SplitN(msg, "\n", 2)
 					if len(parts) != 2 {
 						fmt.Println("Error in parsing the ack message")
@@ -458,12 +465,10 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 						fmt.Println("Error in deserializing the acked tuples")
 						return
 					}
-					fmt.Println("Ack tuple sample :", acked_tuples[0])
+					//fmt.Println("Ack tuple sample :", acked_tuples[0])
 					for _, acked_tuple := range acked_tuples {
 						delete(bufferMap, acked_tuple.FileLineID)
 					}
-					//Todo new: there is some slack here, what happens if the ack is not recorded i.e. the process crashes
-					//here.
 					StoreBufferOnHydfs(bufferMap, task.TaskLogFile, hydfsConn)
 					lastAckTime = time.Now()
 				}else if strings.HasPrefix(msg, "RESUME: ") {
@@ -485,7 +490,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 					fmt.Println("Resuming the task with new output node ", output_node_ID_string)
 					paused = false
 					batchSize := 10
-					ackTimer.Reset(5 * time.Second)
+					lastSentTime = time.Now()
 					lastAckTime = time.Now()
 					//resend the bufferMap in batches
 					batch := make([]LineInfo, 0, batchSize)
@@ -502,15 +507,17 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 					}
 
 				}
-			case <- ackTimer.C:
-				//its been 5 seconds since the last ack
-				//stop the task momentarily till the reset message is received from the leader
-				paused = true
-				fmt.Println("Task paused ", lastAckTime, time.Now())
 			default:
 				if paused {
 					time.Sleep(300 * time.Millisecond)
-					fmt.Println("Task ", task.TaskID, " paused")
+					//fmt.Println("Task ", task.TaskID, " paused")
+					continue
+				}
+				//fmt.Println(time.Since(lastAckTime), time.Since(lastSentTime))
+				if time.Since(lastAckTime) > 5*time.Second && time.Since(lastSentTime) < 5*time.Second {
+					paused = true
+					fmt.Println("Task paused ", lastAckTime, time.Now())
+					fmt.Println(lastSentTime)
 					continue
 				}
 				//send the tuple to the next stage
@@ -519,20 +526,50 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 					batch = append(batch, tuple)
 					bufferMap[tuple.FileLineID] = tuple.Content
 					tupleIndex++
+					fmt.Println(tupleIndex, tuple.FileLineID)
 					if len(batch) == batch_size {
 						//send the batch to the next stage
 						StoreBufferOnHydfs(bufferMap, task.TaskLogFile, hydfsConn)
 						sendLineInfoArray(output_node_conn.(net.Conn), batch, output_node_ID_string, strconv.Itoa(task.OutputTaskIDs[0]), strconv.Itoa(task.TaskID),strconv.Itoa(self_stream_id))
 						batch = make([]LineInfo, 0)
+						lastSentTime = time.Now()
 					}
+				}else if len(tuples) == tupleIndex{
+					//send the completed message to the next stage
+					completed_line := LineInfo{FileLineID: "*COMPLETED*", Content: "1"}
+					sendLineInfoArray(output_node_conn.(net.Conn), []LineInfo{completed_line}, output_node_ID_string, strconv.Itoa(task.OutputTaskIDs[0]),strconv.Itoa(task.TaskID),strconv.Itoa(self_stream_id))
+					tupleIndex++ // just so that we never enter this block again
 				}else if len(batch) > 0 {
 					//send the remaining tuples in the batch
 					StoreBufferOnHydfs(bufferMap, task.TaskLogFile, hydfsConn)
 					sendLineInfoArray(output_node_conn.(net.Conn), batch, output_node_ID_string, strconv.Itoa(task.OutputTaskIDs[0]),strconv.Itoa(task.TaskID),strconv.Itoa(self_stream_id))
 					batch = make([]LineInfo, 0)
+					lastSentTime = time.Now()
 				}else {
 					//all tuples have been sent, wait for ACKs to come in 
-					time.Sleep(100 * time.Millisecond)
+					time.Sleep(1 * time.Second)
+					fmt.Println("Waiting on Acks")
+					fmt.Println("BufferMap size: ", len(bufferMap))
+					//print the entries in the buffer map
+					smallest_unacked_tuple := math.MaxInt
+					largest_unacked_tuple := -1
+					for fileLineID := range bufferMap {
+						line_num := strings.Split(fileLineID, ":")[1]
+						line_num_int, err := strconv.Atoi(line_num)
+						if err != nil {
+							fmt.Println("Error in parsing the line number")
+							return
+						}
+						if line_num_int < smallest_unacked_tuple {
+							smallest_unacked_tuple = line_num_int
+						}
+						if line_num_int > largest_unacked_tuple {
+							largest_unacked_tuple = line_num_int
+						}
+					}
+					fmt.Println("Smallest unacked tuple: ", smallest_unacked_tuple)
+					fmt.Println("Largest unacked tuple: ", largest_unacked_tuple)
+					fmt.Println("*********")
 				}
 			}
 		}
@@ -543,10 +580,14 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 		if task.TaskStage == "first" {
 			//setup the message listener
 			bufferMap := make(map[string]string)
-			ackTimer := time.NewTimer(5 * time.Second)
+			//ackTimer := time.NewTimer(5 * time.Second)
+			lastSentTime := time.Now()
 			lastAckTime := time.Now()
 			paused := false
+			complete := false
+			birth_time := time.Now()
 			output_nodes := task.TaskOutputNodes
+			completion_message_sent := false
 			output_nodes_int := make([]int, 0)
 			for _, node := range output_nodes {
 				node_int, err := strconv.Atoi(node)
@@ -557,17 +598,6 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 				output_nodes_int = append(output_nodes_int, node_int)
 			}
 			seen_storage_map := make(map[string]string)
-			input_node_ID := task.TaskInputNode
-			input_node_ID_int, err := strconv.Atoi(input_node_ID)
-			if err != nil {
-				fmt.Println("Error in parsing the input node ID")
-				return
-			}
-			input_node_conn, ok := streamConnTable.Load(input_node_ID_int)
-			if !ok {
-				fmt.Println("Input node connection not found")
-				return
-			}
 			if task.DoReplay{
 				//fetch the task.log file and the buffer
 				success:= GetFileFromHydfs(hydfsConn, task.TaskLogFile, 10)
@@ -575,7 +605,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 					fmt.Println("Error in getting the file from hydfs")
 					return
 				}
-				bufferMap, err = ReadLastBuffer(task.TaskLogFile)
+				bufferMap, err := ReadLastBuffer(task.TaskLogFile)
 				//fill the seen_storage_map
 				for fileLineID := range bufferMap {
 					seen_storage_map[fileLineID] = "1"
@@ -591,7 +621,10 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 				}
 				for _, line := range send_toBatch {
 					//hash the word to get the output node
-					word := strings.Split(line.FileLineID, ":")[2]
+					//manip start
+					word_index_pair := strings.Split(line.FileLineID, ":")[2]
+					word := strings.Split(word_index_pair, "-")[0]
+					//manip end key -> usable entity to hash
 					selected_node,selected_task := MapWordToNodeAndTask(word,m, output_nodes_int, task.OutputTaskIDs)
 					
 					output_node_conn, ok  := streamConnTable.Load(selected_node)
@@ -601,6 +634,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 					}
 					sendLineInfoArray(output_node_conn.(net.Conn), []LineInfo{line}, strconv.Itoa(selected_node), strconv.Itoa(selected_task) , strconv.Itoa(task.TaskID) ,strconv.Itoa(self_stream_id))
 				}
+				lastSentTime = time.Now()
 				fmt.Println("Task replay successful, now resuming the task")
 			}
 			for {
@@ -609,10 +643,6 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 					if strings.HasPrefix(msg, "ACK: ") {
 						//this will be a batch ack
 						//remove all the tuples from the buffer that have been acked
-						if !ackTimer.Stop() {
-							<-ackTimer.C
-						}
-						ackTimer.Reset(5 * time.Second)
 						parts := strings.SplitN(msg, "\n", 2)
 						if len(parts) != 2 {
 							fmt.Println("Error in parsing the ack message")
@@ -631,61 +661,66 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 							fmt.Println("Error in deserializing the acked tuples")
 							return
 						}
-						fmt.Println("Ack tuple sample for stage 1 :", acked_tuples[0])
+						//fmt.Println("Ack tuple sample for stage 1 :", acked_tuples[0])
 						for _, acked_tuple := range acked_tuples {
 							delete(bufferMap, acked_tuple.FileLineID)
 						}
-						//Todo new: there is some slack here, what happens if the ack is not recorded i.e. the process crashes
-						//here.
 						StoreBufferOnHydfs(bufferMap, task.TaskLogFile, hydfsConn)
 						lastAckTime = time.Now()
 					}else if strings.HasPrefix(msg, "INPUTBATCH: "){
+						
 						//message format INPUTBATCH: targetnodeID targettaskID inputNodeID inputtaskID
 						header := strings.SplitN(msg, "\n", 2)[0]
 						inputtaskID := strings.Split(header, " ")[4]
-						inputNodeID := strings.Split(header, " ")[3]
-						//check if the input node has changed most likely due to a failure
-						if inputNodeID != input_node_ID {
-							input_node_ID = inputNodeID
-							input_node_ID_int, err := strconv.Atoi(input_node_ID)
-							if err != nil {
-								fmt.Println("Error in parsing the input node ID")
-								return
-							}
-							input_node_conn, ok = streamConnTable.Load(input_node_ID_int)
-							if !ok {
-								fmt.Println("Input node connection not found")
-								return
-							}
+						input_node_ID := strings.Split(header, " ")[3]
+						//fmt.Println(header)
+						input_node_ID_int, err := strconv.Atoi(input_node_ID)
+						if err != nil {
+							fmt.Println("Error in parsing the input node ID: ", input_node_ID)
+							return
 						}
-						//<newline> <serialized batch of input>
-						//remove the first line till \n in the message
-
+						input_node_conn, ok := streamConnTable.Load(input_node_ID_int)
+						if !ok {
+							fmt.Println("Input node connection not found", input_node_ID_int)
+							return
+						}
 						input := strings.SplitN(msg, "\n", 2)[1]
-						fmt.Println("Received input batch: ", input)
+						//fmt.Println("Received input batch: ", input)
 						//deserialize the input
 						input_batch,err := deserializeLineInfoArray([]byte (input))
 						if err != nil {
 							fmt.Println("Error in deserializing the input batch")
 							return
 						}
+						if len(input_batch) == 1 {
+							if input_batch[0].FileLineID == "*COMPLETED*" {
+								complete = true
+							}
+							continue
+						}
+						fmt.Println(input_batch[0], " - ", input_batch[len(input_batch) - 1])
 						currentBatch := make([]LineInfo, 0)
 						for _, line := range input_batch {
-							processed_output := RunOperator(task.TaskOperatorName, line.Content)
+							//processed_output := RunOperator(task.TaskOperatorName, line.Content)
+							processed_output := RunOperatorlocal(task.TaskOperatorName, line.Content, task.TaskID)
 							var word_list []string
 							err := json.Unmarshal([]byte(processed_output), &word_list)
 							if err != nil {
 								fmt.Println("Error in unmarshalling the processed output")
 								return
 							}
-							//buffer here is stored as fileLineID:word to maintain uniqueness 
+							//buffer here is stored as fileLineID:word-index to maintain uniqueness 
 							for _, word := range word_list {
 								if _, ok := seen_storage_map[line.FileLineID+":"+word]; ok {
 									//send direct ack to the input node but drop the tuple here since it is a duplicate
+									
 									sendAckInfoArray(input_node_conn.(net.Conn), []LineInfo{line}, input_node_ID, inputtaskID)
+									//fmt.Println("Sack1")
 									fmt.Println("Sent Dupe Ack for  ", line.FileLineID+":"+word)
 									continue
 								}
+							
+								//word is actually word-index 
 								bufferMap[line.FileLineID+":"+word] = "1" //just a placeholder
 								seen_storage_map[line.FileLineID+":"+word] = "1"
 								currentBatch = append(currentBatch, LineInfo{FileLineID: line.FileLineID+":"+word, Content: "1"})
@@ -695,22 +730,25 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 						StoreBufferOnHydfs(bufferMap, task.TaskLogFile, hydfsConn)
 						//send ack to the input node
 						sendAckInfoArray(input_node_conn.(net.Conn), input_batch, input_node_ID, inputtaskID)
+						//fmt.Println("Sack2")
 						//send the batch to the output nodes
 						//hash the word to get the output node
 						//first convert the output nodes to int
-						if !paused{
-							for _, line := range currentBatch {
-								//hash the word to get the output node
-								word := strings.Split(line.FileLineID, ":")[2]
-								selected_node,selected_task := MapWordToNodeAndTask(word,m, output_nodes_int, task.OutputTaskIDs)
-								output_node_conn, ok  := streamConnTable.Load(selected_node)
-								if !ok {
-									fmt.Println("Output node not found")
-									return
-								}
-								sendLineInfoArray(output_node_conn.(net.Conn), []LineInfo{line}, strconv.Itoa(selected_node), strconv.Itoa(selected_task), strconv.Itoa(task.TaskID) ,strconv.Itoa(self_stream_id))
+						
+						for _, line := range currentBatch {
+							//hash the word to get the output node
+							word_index_pair := strings.Split(line.FileLineID, ":")[2]
+							word := strings.Split(word_index_pair, "-")[0]
+							selected_node,selected_task := MapWordToNodeAndTask(word,m, output_nodes_int, task.OutputTaskIDs)
+							output_node_conn, ok  := streamConnTable.Load(selected_node)
+							if !ok {
+								fmt.Println("Output node not found")
+								return
 							}
+							sendLineInfoArray(output_node_conn.(net.Conn), []LineInfo{line}, strconv.Itoa(selected_node), strconv.Itoa(selected_task), strconv.Itoa(task.TaskID) ,strconv.Itoa(self_stream_id))
+							lastSentTime = time.Now()
 						}
+						
 					}else if strings.HasPrefix(msg, "RESUME: "){
 						//format RESUME: targettaskID+new_output_node_ids 
 						//example RESUME: 6+145 146 147
@@ -728,17 +766,18 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 							output_nodes_int = append(output_nodes_int, node_int)
 						}
 						//buffermap has entries like filename:linenumber:word
-						if err != nil {
-							fmt.Println("Error in parsing the output node ID")
-							return
-						}
+						// if err != nil {
+						// 	fmt.Println("Error in parsing the output node ID")
+						// 	return
+						// }
 						send_toBatch := make([]LineInfo, 0)
 						for fileLineID := range bufferMap {
 							send_toBatch = append(send_toBatch, LineInfo{FileLineID: fileLineID, Content: "1"})
 						}
 						for _, line := range send_toBatch {
 							//hash the word to get the output node
-							word := strings.Split(line.FileLineID, ":")[2]
+							word_index_pair := strings.Split(line.FileLineID, ":")[2]
+							word := strings.Split(word_index_pair, "-")[0]
 							selected_node,selected_task := MapWordToNodeAndTask(word,m, output_nodes_int, task.OutputTaskIDs)
 							output_node_conn, ok  := streamConnTable.Load(selected_node)
 							if !ok {
@@ -749,34 +788,66 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 						}
 						fmt.Println("Resuming the task with new output nodes ", output_nodes) 
 						paused = false
-						ackTimer.Reset(5 * time.Second)
 						lastAckTime = time.Now()
-					}else if strings.HasPrefix(msg, "COMPLETE: "){
-						//you are done with the task 
-						fmt.Println("Task "+ strconv.Itoa(task.TaskID) +" completed")
-						return
+						lastSentTime = time.Now()
 					}
-				case <- ackTimer.C:
-					//its been 5 seconds since the last ack
-					//stop the task momentarily till the resume message is received from the leader
-					paused = true
-					fmt.Println("Task paused ", lastAckTime, time.Now())
 				default:
 					//wait for unpause
-					fmt.Println("Task "+strconv.Itoa(task.TaskID)+" paused")
-					time.Sleep(300 * time.Millisecond)
+					//fmt.Println("Task "+strconv.Itoa(task.TaskID)+" paused")
+					if paused {
+						time.Sleep(300 * time.Millisecond)
+					}else {
+						if complete{
+							if !completion_message_sent{
+								//send completion message to all the stage 2 output nodes
+									completed_line := LineInfo{FileLineID: "*COMPLETED*", Content: "1"}
+									for i, output_node := range output_nodes_int {
+										output_node_conn, ok  := streamConnTable.Load(output_node)
+										if !ok {
+											fmt.Println("Output node not found")
+											continue
+										}
+										sendLineInfoArray(output_node_conn.(net.Conn), []LineInfo{completed_line}, strconv.Itoa(output_node), strconv.Itoa(task.OutputTaskIDs[i]),strconv.Itoa(task.TaskID),strconv.Itoa(self_stream_id))
+									}
+									completion_message_sent = true
+							}
+						}
+						if len(bufferMap) == 0 && complete {
+							fmt.Println("First Stage task "+ strconv.Itoa(task.TaskID) +" completed")
+							return
+						}
+						if completion_message_sent {
+							fmt.Println("Waiting for acks on ", len(bufferMap), " tuples")
+							time.Sleep(1 * time.Second)
+						}
+						if (time.Since(lastAckTime) > 5*time.Second && time.Since(lastSentTime) < 5*time.Second) || 
+							(complete && time.Since(lastAckTime) > 10*time.Second){
+							paused = true
+							//format as 12:05:06
+							fmt.Println("Task paused at ", time.Now().Format("15:04:05"))
+							fmt.Println("Last Ack time ", lastAckTime.Format("15:04:05"))
+							fmt.Println("Last Sent time ", lastSentTime.Format("15:04:05"))
+							fmt.Println("Birth time ", birth_time.Format("15:04:05"))
+							continue
+						}
+					}
+					
+					
 				}
 			}
 		}else if task.TaskStage == "second" {
 			seen_storage_map := make(map[string]string)
 			var bufferMap map[string]string
 			bufferMap_int := make(map[string]int)
+			completed_count := 0 // used to check if all the first stages are completed
+			birth_time := time.Now()
 			err := error(nil)
 			if task.DoReplay{
 				//read into the seen storage map the task.txt file 
 				success:= GetFileFromHydfs(hydfsConn, task.TaskLogFile, 10)
 				if !success {
 					fmt.Println("Error in getting the file from hydfs")
+					
 					return
 				}
 				//assuming that the merge has been executed previously
@@ -807,15 +878,24 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 				fmt.Println("Task replay successful, now resuming the task")
 
 			}
+			counter:= 0
+			//batch := make([]LineInfo, 0)
+			ret_ack_map := make(map[string][]LineInfo)
+			//ret_ack_map key: NodeID-taskID value: []LineInfo (tuples that need to be batch acked)
+			total_tuples_processed := 0
+			output_map_global := make(map[string]string)
 			for msg := range chord {
-				
 					if strings.HasPrefix(msg, "INPUTBATCH: "){
+						//input isnt actually a batch but a single tuple since there is no way to batch the input to stateful ops 
 						// format 
 						//INPUTBATCH: targetnodeID targettaskID inputNodeID inputtaskID
+						//fmt.Println("Received message on channel ", msg)
 						input := strings.SplitN(msg, "\n", 2)[1]
 						header := strings.SplitN(msg, "\n", 2)[0]
 						inputTaskID := strings.Split(header, " ")[4]
 						inputNodeID := strings.Split(header, " ")[3]
+						
+						//fmt.Println("Input node ID ", inputNodeID)
 						inputNodeID_int, err := strconv.Atoi(inputNodeID)
 						if err != nil {
 							fmt.Println("Error in parsing the input node ID")
@@ -826,13 +906,39 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 							fmt.Println("Input node connection not found")
 							return
 						}
-						fmt.Println("Received input batch: ", input)
+						//fmt.Println("Received input batch: ", input)
 						//deserialize the input
 						input_batch,err := deserializeLineInfoArray([]byte (input))
 						//line of the format filename:lineNumber:word
 						if err != nil {
 							fmt.Println("Error in deserializing the input batch")
 							return
+						}
+						if input_batch[0].FileLineID == "*COMPLETED*" {
+							completed_count++
+							fmt.Println("Completed count ", completed_count)
+							fmt.Println("Num tasks ", task.NumTasks)
+							if completed_count == task.NumTasks{
+								//inputs are completed, now clear the buffer and write to the hydfs
+								PrintMapToConsole(output_map_global)
+								StoreOutputOnHydfs(output_map_global, task.TaskOutputFile, hydfsConn, task.TaskID)
+								StoreBufferOnHydfs(seen_storage_map, task.TaskLogFile, hydfsConn)
+								//send ack to the input node
+								ResolveStoredAcks(&ret_ack_map, streamConnTable)
+								//sendAckInfoArray(input_node_conn.(net.Conn), batch, inputNodeID, inputTaskID)
+								//fmt.Println("Sacked")
+								fmt.Println("Second Stage Task "+ strconv.Itoa(task.TaskID) +" completed")
+								fmt.Println("Clocked @ ", time.Since(birth_time).Milliseconds() ,"ms")
+								fmt.Println("Total tuples processed ", total_tuples_processed)
+								return 
+							}
+							continue 
+						}
+						//add the input batch to the ret_ack_map 
+						if _, ok := ret_ack_map[inputNodeID+"-"+inputTaskID]; ok {
+							ret_ack_map[inputNodeID+"-"+inputTaskID] = append(ret_ack_map[inputNodeID+"-"+inputTaskID], input_batch...)
+						}else{
+							ret_ack_map[inputNodeID+"-"+inputTaskID] = input_batch
 						}
 						var last_output string
 						for _, line := range input_batch {
@@ -843,8 +949,12 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 								fmt.Println("Send Dupe Ack for  ", line.FileLineID)
 								continue
 							}
-							word := strings.Split(line.FileLineID, ":")[2]
-							last_output = RunOperator(task.TaskOperatorName, word)
+							//format of the line is filename:lineNumber:word-index
+							word_index_pair := strings.Split(line.FileLineID, ":")[2]
+							word := strings.Split(word_index_pair, "-")[0]
+							//last_output = RunOperator(task.TaskOperatorName, word)
+							last_output = RunOperatorlocal(task.TaskOperatorName, word, task.TaskID)
+							total_tuples_processed++
 							//buffer here is stored as fileLineID:word to maintain uniqueness
 							seen_storage_map[line.FileLineID] = "1"
 						}
@@ -856,11 +966,20 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamTaskTable *sync.Map
 						for k, v := range output_int_map {
 							output_string_map[k] = strconv.Itoa(v)
 						}
-						StoreOutputOnHydfs(output_string_map, task.TaskOutputFile, hydfsConn, task.TaskID)
-						StoreBufferOnHydfs(seen_storage_map, task.TaskLogFile, hydfsConn)
-						PrintMapToConsole(output_string_map)
-						//send ack to the input node
-						sendAckInfoArray(input_node_conn.(net.Conn), input_batch, inputNodeID, inputTaskID)
+						output_map_global = output_string_map
+						//batch = append(batch, input_batch...)
+						counter++
+						if counter == 50 {
+							//PrintMapToConsole(output_string_map)
+							StoreOutputOnHydfs(output_string_map, task.TaskOutputFile, hydfsConn, task.TaskID)
+							StoreBufferOnHydfs(seen_storage_map, task.TaskLogFile, hydfsConn)
+							//send ack to the input node
+							ResolveStoredAcks(&ret_ack_map, streamConnTable)
+							//sendAckInfoArray(input_node_conn.(net.Conn), batch, inputNodeID, inputTaskID)
+							//batch = make([]LineInfo, 0)
+							//fmt.Println("Sacked")
+							counter = 0
+						}
 						//StoreOutputOnHydfs(last_output, task.TaskOutputFile, hydfsConn, task.TaskID)
 					}else if strings.Contains(msg, "STOPTASK: "){
 						//exit the task
@@ -881,11 +1000,11 @@ func handleStreamDSConnection(isLeader bool, hydfsConn *SafeConn, conn net.Conn,
 	for {
 		msg, err := readMultilineMessage(reader, "END_OF_MSG")
 		if err != nil {
-			fmt.Println("Error in reading the message")
+			fmt.Println("Error in reading the message : ", err)
 			return
 		}
 		msg = strings.Trim(msg, "\n")
-		fmt.Println("Message received from node: ", msg)
+		//fmt.Println("Message received from node: ", msg)
 		go func (msg string){
 			if strings.HasPrefix(msg, "TASK: "){
 				//leader has sent a task to run 
@@ -900,17 +1019,19 @@ func handleStreamDSConnection(isLeader bool, hydfsConn *SafeConn, conn net.Conn,
 					fmt.Println("Error in deserializing the task")
 					return
 				}
+				fmt.Println("Task received ", task)
 				//create a channel for the task
-				taskChannel := make(chan string)
+				taskChannel := make(chan string, 30000)
 				taskChannelTable.Store(task.TaskID, taskChannel)
 				streamTaskTable.Store(self_id, []*Task{&task})
 				//run the task
-				go runStreamDSTask(hydfsConn, &task, streamTaskTable, streamConnTable,taskChannel, m)
+				go runStreamDSTask(hydfsConn, &task, streamConnTable,taskChannel, m)
 			}else if strings.HasPrefix(msg, "ACK: "){
 				//format ACK: targetNodeID targetTaskID
 				//route the ack to target task 
-				tokens:= strings.Split(msg, " ")
-				targetNodeID := tokens[1]
+				header := strings.SplitN(msg, "\n", 2)[0]
+
+				targetNodeID := strings.Split(header, " ")[1]
 				targetNodeID_int, err := strconv.Atoi(targetNodeID)
 				if err != nil {
 					fmt.Println("Error in parsing the target node ID")
@@ -920,10 +1041,10 @@ func handleStreamDSConnection(isLeader bool, hydfsConn *SafeConn, conn net.Conn,
 					fmt.Println("Ack wasn't supposed to come to this VM ", targetNodeID_int, self_stream_id)
 					return
 				}
-				targetTaskID := tokens[2]
+				targetTaskID := strings.Split(header, " ")[2]
 				targetTaskID_int, err := strconv.Atoi(targetTaskID)
 				if err != nil {
-					fmt.Println("Error in parsing the target task ID")
+					fmt.Println("Error in parsing the target task ID", 948, targetTaskID)
 					return
 				}
 				//get the channel for the task
@@ -949,7 +1070,7 @@ func handleStreamDSConnection(isLeader bool, hydfsConn *SafeConn, conn net.Conn,
 				targetTaskID := strings.Split(tokens[2], "+")[0]
 				targetTaskID_int, err := strconv.Atoi(targetTaskID)
 				if err != nil {
-					fmt.Println("Error in parsing the target task ID")
+					fmt.Println("Error in parsing the target task ID", 974, targetTaskID)
 					return
 				}
 				//get the channel for the task
@@ -966,7 +1087,7 @@ func handleStreamDSConnection(isLeader bool, hydfsConn *SafeConn, conn net.Conn,
 				targetTaskID := tokens[1]
 				targetTaskID_int, err := strconv.Atoi(targetTaskID)
 				if err != nil {
-					fmt.Println("Error in parsing the target task ID")
+					fmt.Println("Error in parsing the target task ID", 990, targetTaskID)
 					return
 				}
 				//get the channel for the task
@@ -982,7 +1103,7 @@ func handleStreamDSConnection(isLeader bool, hydfsConn *SafeConn, conn net.Conn,
 				targettaskID := strings.Split(header, " ")[2]
 				targettaskID_int, err := strconv.Atoi(targettaskID)
 				if err != nil {
-					fmt.Println("Error in parsing the target task ID")
+					fmt.Println("Error in parsing the target task ID", 1004, targettaskID)
 					return
 				}
 				//get the channel for the task
@@ -998,7 +1119,7 @@ func handleStreamDSConnection(isLeader bool, hydfsConn *SafeConn, conn net.Conn,
 				targetTaskID := tokens[1]
 				targetTaskID_int, err := strconv.Atoi(targetTaskID)
 				if err != nil {
-					fmt.Println("Error in parsing the target task ID")
+					fmt.Println("Error in parsing the target task ID", 1019, targetTaskID)
 					return
 				}
 				//get the channel for the task
@@ -1180,11 +1301,12 @@ func setupStreamDSCommTerminal(isleader bool, hydfsConn *SafeConn, taskChannelTa
 			}
 		}else if strings.HasPrefix(text, "STOPTASK: "){
 				//format STOPTASK: targetTaskID
+				text  = strings.Trim(text, "\n")
 				tokens:= strings.Split(text, " ")
 				targetTaskID := tokens[1]
 				targetTaskID_int, err := strconv.Atoi(targetTaskID)
 				if err != nil {
-					fmt.Println("Error in parsing the target task ID")
+					fmt.Println("Error in parsing the target task ID", 1210, targetTaskID)
 					continue
 				}
 				//get the channel for the task
@@ -1212,6 +1334,27 @@ func setupStreamDSCommTerminal(isleader bool, hydfsConn *SafeConn, taskChannelTa
 				fmt.Println("Conn: ", value)
 				return true
 			})
+		}else if strings.HasPrefix(text, "quantify"){
+			// quantifies the result of given hydfsFile as one, only to be run on leader
+			//format quantify hydfsdestFile numtasks
+			text = strings.Trim(text, "\n")
+			if len(strings.Split(text, " ")) != 3 {
+				fmt.Println("Invalid command")
+				continue
+			}
+			num_tasks := strings.Split(text, " ")[2]
+			hydfsDestFileName := strings.Split(text, " ")[1]
+			num_tasks_int, err := strconv.Atoi(num_tasks)
+			if err != nil {
+				fmt.Println("Error in parsing the number of tasks")
+				continue
+			}
+			output, err := QuantifyHydfsFile(hydfsConn, hydfsDestFileName, num_tasks_int)
+			if err != nil {
+				fmt.Println("Error in quantifying the hydfs file")
+				continue
+			}
+			fmt.Println("Quantified output: \n", output)
 		}
 	}
 }
