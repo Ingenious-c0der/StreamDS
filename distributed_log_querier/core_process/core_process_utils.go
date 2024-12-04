@@ -354,7 +354,6 @@ func GetHashableStage1(line LineInfo) string {
 
 func GetOutputFromOperatorStage1(processed_output string) []string {
 	var output_list []string
-	fmt.Println("Processed output: ", processed_output)
 	err := json.Unmarshal([]byte(processed_output), &output_list)
 	if err != nil {
 		fmt.Println("Error in unmarshalling the processed output")
@@ -909,7 +908,6 @@ func RunOperatorlocal(operator_name string, input string, taskID int) string {
 func RunOperator(operator_name string, input string) string {
 	operator_dir := GetOperatorsDir()
 	operator_path := filepath.Join(operator_dir, operator_name)
-	fmt.Println("Operator path: ", operator_path)
 	// Create command
 	cmd := exec.Command(operator_path)
 	

@@ -528,7 +528,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 					batch = append(batch, tuple)
 					bufferMap[tuple.FileLineID] = tuple.Content
 					tupleIndex++
-					fmt.Println(tupleIndex, tuple.FileLineID)
+					// fmt.Println(tupleIndex, tuple.FileLineID)
 					if len(batch) == batch_size {
 						//send the batch to the next stage
 						StoreBufferOnHydfs(bufferMap, task.TaskLogFile, hydfsConn)
