@@ -46,7 +46,7 @@ func testRateFilterOperator(t *testing.T) {
 	for _, input := range inputs {
 		output := distributed_log_querier.RunOperatorlocal("rate_filter_operator", input,0)
 		//deserialize the output
-		var result interface{}
+		var result []string
 		err := json.Unmarshal([]byte(output), &result)
 		if err != nil {
 			fmt.Println("Error converting to JSON: ", err)

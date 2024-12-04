@@ -338,13 +338,28 @@ func GetSourceLineNumberFromKey(key string) int {
 //changes per operator / functionality
 //changing these will directly change the (key,value) source emits and tracks
 func GetStage1Key(k string, m string ) string {
-	return fmt.Sprintf("%s:%s", k, m)
+	//this function generates the key for stage 1 to use which is non clashing and unique
+	return fmt.Sprintf("%s:%s", k, m) //filename:linenumber:zone_id
 }
 func GetHashableStage1(line LineInfo) string {
 	key := line.FileLineID
-	word_index_pair := strings.Split(key, ":")[2]
-	word := strings.Split(word_index_pair, "-")[0]
-	return word
+	//word count start
+	// word_index_pair := strings.Split(key, ":")[2]
+	// word := strings.Split(word_index_pair, "-")[0]
+	// return word
+	//word count end
+	zone_id := strings.Split(key, ":")[2] //filename:linenumber:zone_id
+	return zone_id
+}
+
+func GetOutputFromOperatorStage1(processed_output string) []string {
+	var output_list []string
+	err := json.Unmarshal([]byte(processed_output), &output_list)
+	if err != nil {
+		fmt.Println("Error in unmarshalling the processed output")
+		return []string{}
+	}
+	return output_list
 }
 
 
@@ -354,9 +369,12 @@ func GetStage2Key(k string) string {
 
 func GetInputForStage2(line LineInfo) string {
 		//format of the line is filename:lineNumber:word-index
-		word_index_pair := strings.Split(line.FileLineID, ":")[2]
-		word := strings.Split(word_index_pair, "-")[0]
-		return word
+		// word_index_pair := strings.Split(line.FileLineID, ":")[2]
+		// word := strings.Split(word_index_pair, "-")[0]
+		// return word
+		//word count end
+		zone_id := strings.Split(line.FileLineID, ":")[2]
+		return zone_id
 }
 
 //manip functions end

@@ -702,16 +702,14 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 						for _, line := range input_batch {
 							//processed_output := RunOperator(task.TaskOperatorName, line.Content)
 							processed_output := RunOperatorlocal(task.TaskOperatorName, line.Content, task.TaskID)
-							var output_list []string
-							err := json.Unmarshal([]byte(processed_output), &output_list)
-							if err != nil {
-								fmt.Println("Error in unmarshalling the processed output")
-								return
-							}
-							//buffer here is stored as fileLineID:word-index to maintain uniqueness 
+							output_list := GetOutputFromOperatorStage1(processed_output)
 							for _, output := range output_list {
 								//manip from source key -> first key
 								key_stage_1 := GetStage1Key(line.FileLineID, output)
+								if key_stage_1 == "" {
+									//empty output case 
+									continue
+								}
 								if _, ok := seen_storage_map[key_stage_1]; ok {
 									//send direct ack to the input node but drop the tuple here since it is a duplicate
 									sendAckInfoArray(input_node_conn.(net.Conn), []LineInfo{line}, input_node_ID, inputtaskID)
@@ -719,8 +717,6 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 									fmt.Println("Sent Dupe Ack for  ", key_stage_1)
 									continue
 								}
-							
-								//word is actually word-index 
 								bufferMap[key_stage_1] = "1" //just a placeholder
 								seen_storage_map[key_stage_1] = "1"
 								currentBatch = append(currentBatch, LineInfo{FileLineID: key_stage_1, Content: "1"})
@@ -903,7 +899,6 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 						//fmt.Println("Received input batch: ", input)
 						//deserialize the input
 						input_batch,err := deserializeLineInfoArray([]byte (input))
-						//line of the format filename:lineNumber:word
 						if err != nil {
 							fmt.Println("Error in deserializing the input batch")
 							return
