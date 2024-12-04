@@ -49,7 +49,7 @@ func main(){
 	}
 	//added to make sure node ids are same across hydfs and stream DS layer irrespective of the differering ports leading to different ids
 	//VM MARKER CHECK?
-	manip_address := subtractStrings(streamDSGlobalPort, 3030)
+	manip_address := subtractStrings(streamDSGlobalPort, 4040)
 	selfStreamDSAddress = selfStreamDSAddress + ":" + manip_address
 	//VM MARKER END
 	wg.Add(1)
