@@ -35,9 +35,35 @@ func TestLocalTesting(t *testing.T) {
 	//testLocalOperatorRunSplitLine(t)
 	//testLocalOperatorRunWordCount(t)
 	//testDistinctNBuffersRead(t)
-	testRateFilterOperator(t)
+	//testRateFilterOperator(t)
+	testLichessOperator(t)
 }
 
+
+func testLichessOperator(t *testing.T) {
+	lines := []string{
+		"nWhCo0rP,True,1496301655765.0,1496302689313.0,68,resign,white,7+5,anopiloric,1756,wojand,1667,e4 e5 Bc4 Nf6 Nf3 Nc6 a3 d5 exd5 Nxd5 Qe2 Nf4 Qf1 Bc5 d3 Ne6 Qe2 Qf6 O-O O-O b4 Bd4 c3 Bb6 b5 Ne7 Qxe5 Qxe5 Nxe5 Nf5 d4 Re8 a4 Ba5 Bd2 Re7 Bd3 Nd6 c4 Nxd4 Bxa5 Rxe5 Bxc7 Re6 Nc3 Nb3 Rad1 Ne8 Bg3 Nf6 Bc2 Nc5 a5 a6 b6 Bd7 Bh4 Ng4 Nd5 Bc6 Nc7 Rh6 Nxa8 Rxh4 h3 Ne5 Rd8+ Be8,C55,Italian Game,6",
+		"XWOeTEaM,True,1496301498952.0,1496301647321.0,26,resign,white,10+0,ivanov32,1761,wojand,1675,e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4 exd4 cxd4 Bb4+ Nc3 Nxe4 O-O Nxc3 bxc3 Bxc3 Ba3 Bxa1 Re1+ Ne7 Bxe7 Qxe7 Rxe7+ Kxe7,C54,Italian Game: Giuoco Piano |  Aitken Variation,19",
+		"fZNM7JV0,True,1496152442509.0,1496153082339.0,74,mate,black,10+0,wojand,1682,andychem70,1792,e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be2 e6 Be3 Be7 Qd2 Nbd7 O-O-O Qc7 f3 O-O g4 Ne5 h4 Nc4 Bxc4 Qxc4 g5 Nd7 f4 b5 f5 e5 Nf3 Bb7 h5 Bxe4 Rdf1 Rfc8 f6 Bf8 fxg7 Bxg7 g6 f5 gxh7+ Kh8 Bh6 Bxh6 Qxh6 b4 Rhg1 bxc3 Rg8+ Rxg8 hxg8=Q+ Kxg8 Rg1+ Kf7 Rg7+ Ke8 Qg6+ Kd8 Qg5+ Kc7 bxc3 Qf1+ Kb2 Rb8+ Ka3 Qc1+ Ka4 Qxc2+ Ka5 Qxa2#,B84,Sicilian Defense: Scheveningen Variation |  Classical Variation,12",
+		"MP9Ox4EM,True,1496084376362.0,1496085561151.0,124,outoftime,black,10+0,wojand,1694,hungryg,1636,e4 e6 d4 c6 Nc3 Bb4 Bd2 d6 Nf3 Nf6 Bd3 b5 a3 Ba5 O-O Bb7 e5 dxe5 Bg5 exd4 Ne4 Bb6 Nxf6+ gxf6 Bh4 Nd7 Be4 Qc7 Nxd4 O-O-O Nb3 Nc5 Qf3 Nxe4 Qxe4 c5 Qe2 Rhg8 Bg3 e5 Qxb5 a6 Qc4 Qc6 f3 Rd7 Rad1 Qe6 Qxe6 fxe6 Nd2 Rd4 Ne4 f5 Nf6 Rgd8 Rxd4 Rxd4 Bxe5 Rd2 Nxh7 Rxc2 Rd1 Re2 Bf6 e5 Ng5 e4 fxe4 fxe4 Rd6 Bc7 Re6 e3 Kf1 Rd2 Rxe3 Bxg2+ Kg1 Bf4 Re8+ Kb7 Bc3 Rc2 Re7+ Kb6 Re6+ Kb5 a4+ Kxa4 Re4+ Bxe4 Nxe4 Bxh2+ Kf1 Kb5 Ke1 a5 Kd1 Rg2 Nd6+ Kc6 Nf5 a4 Ne3 Rg3 Ke2 Rg8 Kd2 Rd8+ Kc2 c4 Nxc4 a3 Nxa3 Rc8 Kd3 Kd7 Kd4 Ke8 b4 Kf7 Kd5 Rd8+,C00,French Defense: Normal Variation,3",
+		"0IUkH7T9,True,1495965987775.0,1495966774646.0,90,resign,black,4+6,nicola1396,1685,wojand,1684,e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Bc5 Nxc6 dxc6 Qxd8+ Kxd8 Bc4 Nf6 e5 Ne4 Be3 Bxe3 fxe3 Ng5 h4 Be6 Bxe6 Nxe6 Nc3 Re8 O-O-O+ Ke7 Rhf1 Kf8 g4 Nc5 g5 Rxe5 Rde1 b5 Rg1 Ne6 Rg3 Rd8 Rf3 Nd4 Rff1 Nf5 h5 Rxe3 Rxe3 Nxe3 Rf3 Nc4 g6 hxg6 hxg6 Ne5 Rh3 Nxg6 Ne4 f6 Nc5 Kf7 Re3 Nf4 Re4 Nd5 Ne6 Re8 c4 Rxe6 Rxe6 Kxe6 cxd5+ cxd5 Kd2 g5 Ke3 f5 Kf3 Ke5 b3 g4+ Kg3 d4 Kf2 d3 Ke3 g3 Kxd3 g2 Ke2 g1=Q,C45,Scotch Game: Classical Variation,8",
+		"UWHwHtWT,True,1495965869850.0,1495965914436.0,9,resign,white,5+8,rassem,1668,wojand,1695,e4 e5 Bc4 Nf6 d4 d6 dxe5 Nxe4 Qd5,C24,Bishop's Opening: Ponziani Gambit,5",
+		"oTKuskKk,True,1495957736271.0,1495958350657.0,64,resign,black,4+6,regalsin,1595,wojand,1687,d4 d5 Nf3 e6 Nc3 c5 e4 Nf6 e5 Nfd7 Be3 Nc6 Bb5 a6 Bxc6 bxc6 dxc5 Nxc5 Bxc5 Bxc5 O-O O-O Nd4 Qc7 a3 Qxe5 Nxc6 Qc7 Nd4 Bd7 b4 Bd6 Nce2 Bxh2+ Kh1 Be5 f4 Bf6 g4 e5 Nf5 Bxf5 gxf5 exf4 Rb1 Qe5 Nxf4 Qxf5 Qxd5 Qxc2 Nh5 Bh4 Qg2 Qxg2+ Kxg2 Rab8 Rf4 Bg5 Rg4 h6 Nf4 f5 Rg3 Bxf4,D02,Queen's Pawn Game: Zukertort Variation,3",
+		"ZXXVCrPu,False,1504454450657.0,1504454454397.0,1,outoftime,white,15+30,critico-82,2403,lesauteurdeclasse,1746,e4,B00,King's Pawn,1",
+		"rj36zvil,False,1504448999828.0,1504452375791.0,5,outoftime,white,30+30,rajuppi,2454,lesauteurdeclasse,1746,e4 e6 d4 Bb4+ c3,C00,French Defense: Normal Variation,3",
+	}
+	for _, line := range lines {
+		output := distributed_log_querier.RunOperator("lichess_operator_1", line)
+		//deserialize the output
+		fmt.Println("Output", output)
+		var result []string
+		err := json.Unmarshal([]byte(output), &result)
+		if err != nil {
+			fmt.Println("Error converting to JSON: ", err)
+		}
+		fmt.Println(result)
+	}
+}
 
 func testRateFilterOperator(t *testing.T) {
 	inputs := []string {"-9822327.40910577,4882292.41177499,1,624,14,0.25,6,63,CP75,CAMPUS $.75/HR,,1,Yes,500,500 S Third St,3,7:00 AM - 21:00 PM,Monday - Saturday,2 hr max in 3 hr period,,No Charge 9PM - 7AM,,","-9822317.04959963,4882696.08124157,2,617,14,0.75,6,63,CP75,CAMPUS $.75/HR,,2,Yes,200,200 S Third St,2,7:00 AM - 21:00 PM,Monday - Saturday,10 hr max,,No Charge 9PM - 7AM,,",

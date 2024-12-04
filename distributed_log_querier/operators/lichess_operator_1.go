@@ -7,9 +7,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"slices"
 )
 
-func main3() {
+func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
@@ -22,22 +23,27 @@ func main3() {
 	input := scanner.Text()
 	fields := strings.Split(input, ",")
 	
-	if len(fields) < 6 {
-		fmt.Fprintf(os.Stderr, "Invalid input format\n")
-		os.Exit(1)
+	if len(fields) < 14 {
+		jsonBytes, _ := json.Marshal([]string{})
+		fmt.Println(string(jsonBytes))
 	}
-	rate, err := strconv.ParseFloat(fields[5], 64)
+	winner := fields[6]
+	moves:= fields[4]
+	victory_status := fields[5]
+	opening_name:= fields[14]
+	moves_int, err := strconv.ParseFloat(moves, 64)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing rate: %v\n", err)
 		os.Exit(1)
 	}
-
+	arr := []string{"mate", "resign", "outoftime"}
+	openings := []string {"Scandinavian Defense", "Sicilian Defense", "Indian Game", "Caro-Kann Defense", "Italian Game"}
 	var result interface{}
-	if rate > 0.5 {
-		result = []string{}
+	if winner == "white" && moves_int > 40 && slices.Contains(arr, victory_status) && slices.Contains(openings, opening_name) {
+		result = []string{opening_name}
 	} else {
 		//return zoneDesc and 1 
-		result = []interface{}{fields[8]}
+		result = []interface{}{}
 	}
 
 	jsonBytes, err := json.Marshal(result)
