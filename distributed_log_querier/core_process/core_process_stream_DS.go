@@ -672,7 +672,6 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 						StoreBufferOnHydfs(bufferMap, task.TaskLogFile, hydfsConn)
 						lastAckTime = time.Now()
 					}else if strings.HasPrefix(msg, "INPUTBATCH: "){
-						
 						//message format INPUTBATCH: targetnodeID targettaskID inputNodeID inputtaskID
 						header := strings.SplitN(msg, "\n", 2)[0]
 						inputtaskID := strings.Split(header, " ")[4]
@@ -737,7 +736,11 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 						//send the batch to the output nodes
 						//hash the word to get the output node
 						//first convert the output nodes to int
-						
+						if paused{
+							//fmt.Println("Task paused")
+							//do not send the batch forward
+							continue
+						}
 						for _, line := range currentBatch {
 							//hash the word to get the output node
 							//fileLineID or the key here is filename:linenumber:word-index
