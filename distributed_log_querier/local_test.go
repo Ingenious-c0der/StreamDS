@@ -34,8 +34,28 @@ func TestLocalTesting(t *testing.T) {
 	//testReadPartitioning(t)
 	//testLocalOperatorRunSplitLine(t)
 	//testLocalOperatorRunWordCount(t)
-	testDistinctNBuffersRead(t)
+	//testDistinctNBuffersRead(t)
+	testRateFilterOperator(t)
 }
+
+
+func testRateFilterOperator(t *testing.T) {
+	inputs := []string {"-9822327.40910577,4882292.41177499,1,624,14,0.25,6,63,CP75,CAMPUS $.75/HR,,1,Yes,500,500 S Third St,3,7:00 AM - 21:00 PM,Monday - Saturday,2 hr max in 3 hr period,,No Charge 9PM - 7AM,,","-9822317.04959963,4882696.08124157,2,617,14,0.75,6,63,CP75,CAMPUS $.75/HR,,2,Yes,200,200 S Third St,2,7:00 AM - 21:00 PM,Monday - Saturday,10 hr max,,No Charge 9PM - 7AM,,",
+	"-9822327.37494088,4882272.83336435,3,626,14,0.75,6,63,CP75,CAMPUS $.25/HR,,3,Yes,500,500 S Third St,3,7:00 AM - 21:00 PM,Monday - Saturday,2 hr max in 3 hr period,,No Charge 9PM - 7AM,,"}
+
+	for _, input := range inputs {
+		output := distributed_log_querier.RunOperatorlocal("rate_filter_operator", input,0)
+		//deserialize the output
+		var result interface{}
+		err := json.Unmarshal([]byte(output), &result)
+		if err != nil {
+			fmt.Println("Error converting to JSON: ", err)
+		}
+		fmt.Println(result)
+	}
+	
+}
+
 
 func testDistinctNBuffersRead(t *testing.T) {
 	output, error := distributed_log_querier.GetLastNDistinctTaskBuffers("output.txt", 3)

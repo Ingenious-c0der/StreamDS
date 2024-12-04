@@ -340,7 +340,8 @@ func GetSourceLineNumberFromKey(key string) int {
 func GetStage1Key(k string, m string ) string {
 	return fmt.Sprintf("%s:%s", k, m)
 }
-func GetHashableStage1(key string) string {
+func GetHashableStage1(line LineInfo) string {
+	key := line.FileLineID
 	word_index_pair := strings.Split(key, ":")[2]
 	word := strings.Split(word_index_pair, "-")[0]
 	return word

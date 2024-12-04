@@ -15,6 +15,7 @@ import (
 
 var self_stream_id int = 0
 var stateful_operator_state_file = "word_count_state.txt"
+var stage_1_batch_size = 100
 var stage_2_batch_size = 50
 //only to be run on the leader node
 func planStreamDSTasks(hydfsConn *SafeConn, hydfsSrcFileName string, op1_name string, op1_state string, op2_name string, op2_state string, hydfsDestFileName string,num_tasks int, streamTaskTable *sync.Map) map[string]*Task{
@@ -421,7 +422,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 		}
 		//start the send of tuples and receive of ack on the chord channel
 		//also maintain persistent buffer for the tuples
-		batch_size := 100
+		batch_size := stage_1_batch_size
 		batch := make([]LineInfo, 0) 
 		bufferMap := make(map[string]string)
 		output_node_ID_string := task.TaskOutputNodes[0]
@@ -621,7 +622,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 					send_toBatch = append(send_toBatch, LineInfo{FileLineID: fileLineID, Content: "1"})
 				}
 				for _, line := range send_toBatch {
-					hashable := GetHashableStage1(line.FileLineID)
+					hashable := GetHashableStage1(line)
 					//manip end key -> usable entity to hash
 					selected_node,selected_task := MapHashableToNodeAndTask(hashable,m, output_nodes_int, task.OutputTaskIDs)
 					
@@ -739,7 +740,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 							//fileLineID or the key here is filename:linenumber:word-index
 							//manip_key_op_2 
 							//hashable is the entity you want to extract from the key to hash on if at all.
-							hashable := GetHashableStage1(line.FileLineID)
+							hashable := GetHashableStage1(line)
 							//manip end key -> usable entity to hash
 							selected_node,selected_task := MapHashableToNodeAndTask(hashable,m, output_nodes_int, task.OutputTaskIDs)
 							output_node_conn, ok  := streamConnTable.Load(selected_node)
@@ -772,7 +773,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 							send_toBatch = append(send_toBatch, LineInfo{FileLineID: fileLineID, Content: "1"})
 						}
 						for _, line := range send_toBatch {
-							hashable := GetHashableStage1(line.FileLineID)
+							hashable := GetHashableStage1(line)
 							selected_node,selected_task := MapHashableToNodeAndTask(hashable,m, output_nodes_int, task.OutputTaskIDs)
 							output_node_conn, ok  := streamConnTable.Load(selected_node)
 							if !ok {
