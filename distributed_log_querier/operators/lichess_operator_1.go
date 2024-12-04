@@ -40,7 +40,9 @@ func main() {
 	openings := []string {"Scandinavian Defense", "Sicilian Defense", "Indian Game", "Caro-Kann Defense", "Italian Game"}
 	var result interface{}
 	if winner == "white" && moves_int > 40 && slices.Contains(arr, victory_status) && slices.Contains(openings, opening_name) {
-		result = []string{opening_name}
+		opening_name_comps := strings.Split(opening_name, " ")
+		condensed_opening_name := opening_name_comps[0] + "_" + opening_name_comps[1]
+		result = []string{condensed_opening_name}
 	} else {
 		//return zoneDesc and 1 
 		result = []interface{}{}
