@@ -466,7 +466,7 @@ func WaitOnFile(fileName string, milliseconds int) bool {
     fetched_dir := filepath.Join(dir, "Fetched")
     filePath := filepath.Join(fetched_dir, fileName)
     
-    timeout := time.After(7 * time.Second)
+    timeout := time.After(5 * time.Second)
     ticker := time.NewTicker(time.Duration(milliseconds) * time.Millisecond)
     defer ticker.Stop() // Ensure the ticker is stopped when the function 
 

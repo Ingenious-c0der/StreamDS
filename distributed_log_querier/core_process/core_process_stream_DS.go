@@ -356,9 +356,14 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 		if !success {
 			fmt.Println("Error in getting the file from hydfs, retrying.. ")
 			//retry
-			success = GetFileFromHydfs(hydfsConn, source_file_name, 10)
+			for i:=0; i<5; i++ {
+				success = GetFileFromHydfs(hydfsConn, source_file_name, 10)
+				if !success {
+					fmt.Println("Error in getting the file from hydfs max retry")
+				}
+			}
 			if !success {
-				fmt.Println("Error in getting the file from hydfs max retry")
+				fmt.Println("Error in getting the file from hydfs after max retries")
 				return
 			}
 		
