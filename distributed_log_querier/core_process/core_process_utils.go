@@ -313,6 +313,53 @@ func StoreOutputOnHydfs(outputMap map[string]string, filename string, hydfsConn 
 	//call append on file
 	hydfsConn.SafeWrite([]byte("TASKAPPEND: " +  filename + " " + filename + "END_OF_MSG\n"))
 }
+
+//manip functions for source tasks
+//changes per operator / functionality
+//changing these will directly change the (key,value) source emits and tracks
+func GetSourceKey(filename string, lineNum int) string {
+	return fmt.Sprintf("%s:%d", filename, lineNum)
+}
+func GetSourceValue(line string) string {
+	return line
+}
+
+func GetSourceLineNumberFromKey(key string) int {
+	line_num := strings.Split(key, ":")[1]
+	line_num_int, err := strconv.Atoi(line_num)
+	if err != nil {
+		fmt.Println("Key does not contain valid line number")
+		return -1 
+	}
+	return line_num_int
+}
+
+//manip functions for stage1 tasks
+//changes per operator / functionality
+//changing these will directly change the (key,value) source emits and tracks
+func GetStage1Key(k string, m string ) string {
+	return fmt.Sprintf("%s:%s", k, m)
+}
+func GetHashableStage1(key string) string {
+	word_index_pair := strings.Split(key, ":")[2]
+	word := strings.Split(word_index_pair, "-")[0]
+	return word
+}
+
+
+func GetStage2Key(k string) string {
+	return k
+}
+
+func GetInputForStage2(line LineInfo) string {
+		//format of the line is filename:lineNumber:word-index
+		word_index_pair := strings.Split(line.FileLineID, ":")[2]
+		word := strings.Split(word_index_pair, "-")[0]
+		return word
+}
+
+//manip functions end
+
 func ReadFilePartition(filename string, start, end int) ([]LineInfo, error) {
 	dir := GetDistributedLogQuerierDir()
 	filePath := filepath.Join(dir, "Fetched", filename)
@@ -329,10 +376,11 @@ func ReadFilePartition(filename string, start, end int) ([]LineInfo, error) {
     for scanner.Scan() {
         lineNum++
         if lineNum >= start && lineNum <= end {
-            fileLineID := fmt.Sprintf("%s:%d", filename, lineNum)
+            fileLineID := GetSourceKey(filename, lineNum)
+			lineContent := GetSourceValue(scanner.Text())
             lines = append(lines, LineInfo{
                 FileLineID: fileLineID,
-                Content:    scanner.Text(),
+                Content:    lineContent,
             })
         }
         if lineNum > end {
@@ -1657,7 +1705,7 @@ func GetHyDFSCoordinatorID(keyTable * sync.Map, fileID int) int {
 }
 
 //used by stage1 to map the hash to the node
-func MapWordToNodeAndTask(word string, m int, nodeIDs []int, taskIDs [] int) (int,int) {
+func MapHashableToNodeAndTask(word string, m int, nodeIDs []int, taskIDs [] int) (int,int) {
 	//first find word hash
 	word_ID := GetFileID(word, m)
 	//find the nodeID

@@ -14,6 +14,8 @@ import (
 )
 
 var self_stream_id int = 0
+var stateful_operator_state_file = "word_count_state.txt"
+var stage_2_batch_size = 50
 //only to be run on the leader node
 func planStreamDSTasks(hydfsConn *SafeConn, hydfsSrcFileName string, op1_name string, op1_state string, op2_name string, op2_state string, hydfsDestFileName string,num_tasks int, streamTaskTable *sync.Map) map[string]*Task{
 	// a way to find VMs with least number of tasks running on them 
@@ -389,11 +391,10 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 			//get the smallest unacked tuple
 			smallest_unacked_tuple := math.MaxInt
 			for fileLineID := range bufferMap {
-				line_num := strings.Split(fileLineID, ":")[1]
-				line_num_int, err := strconv.Atoi(line_num)
-				if err != nil {
-					fmt.Println("Error in parsing the line number")
-					return
+				line_num_int := GetSourceLineNumberFromKey(fileLineID)
+				if line_num_int == -1{
+					fmt.Println("Source key does not contain line num, replaying entire partition")
+					continue
 				}
 				if line_num_int < smallest_unacked_tuple {
 					smallest_unacked_tuple = line_num_int
@@ -620,12 +621,9 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 					send_toBatch = append(send_toBatch, LineInfo{FileLineID: fileLineID, Content: "1"})
 				}
 				for _, line := range send_toBatch {
-					//hash the word to get the output node
-					//manip start
-					word_index_pair := strings.Split(line.FileLineID, ":")[2]
-					word := strings.Split(word_index_pair, "-")[0]
+					hashable := GetHashableStage1(line.FileLineID)
 					//manip end key -> usable entity to hash
-					selected_node,selected_task := MapWordToNodeAndTask(word,m, output_nodes_int, task.OutputTaskIDs)
+					selected_node,selected_task := MapHashableToNodeAndTask(hashable,m, output_nodes_int, task.OutputTaskIDs)
 					
 					output_node_conn, ok  := streamConnTable.Load(selected_node)
 					if !ok {
@@ -703,27 +701,28 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 						for _, line := range input_batch {
 							//processed_output := RunOperator(task.TaskOperatorName, line.Content)
 							processed_output := RunOperatorlocal(task.TaskOperatorName, line.Content, task.TaskID)
-							var word_list []string
-							err := json.Unmarshal([]byte(processed_output), &word_list)
+							var output_list []string
+							err := json.Unmarshal([]byte(processed_output), &output_list)
 							if err != nil {
 								fmt.Println("Error in unmarshalling the processed output")
 								return
 							}
 							//buffer here is stored as fileLineID:word-index to maintain uniqueness 
-							for _, word := range word_list {
-								if _, ok := seen_storage_map[line.FileLineID+":"+word]; ok {
+							for _, output := range output_list {
+								//manip from source key -> first key
+								key_stage_1 := GetStage1Key(line.FileLineID, output)
+								if _, ok := seen_storage_map[key_stage_1]; ok {
 									//send direct ack to the input node but drop the tuple here since it is a duplicate
-									
 									sendAckInfoArray(input_node_conn.(net.Conn), []LineInfo{line}, input_node_ID, inputtaskID)
 									//fmt.Println("Sack1")
-									fmt.Println("Sent Dupe Ack for  ", line.FileLineID+":"+word)
+									fmt.Println("Sent Dupe Ack for  ", key_stage_1)
 									continue
 								}
 							
 								//word is actually word-index 
-								bufferMap[line.FileLineID+":"+word] = "1" //just a placeholder
-								seen_storage_map[line.FileLineID+":"+word] = "1"
-								currentBatch = append(currentBatch, LineInfo{FileLineID: line.FileLineID+":"+word, Content: "1"})
+								bufferMap[key_stage_1] = "1" //just a placeholder
+								seen_storage_map[key_stage_1] = "1"
+								currentBatch = append(currentBatch, LineInfo{FileLineID: key_stage_1, Content: "1"})
 							}
 						}
 						//write the buffer map to the hydfs
@@ -737,9 +736,12 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 						
 						for _, line := range currentBatch {
 							//hash the word to get the output node
-							word_index_pair := strings.Split(line.FileLineID, ":")[2]
-							word := strings.Split(word_index_pair, "-")[0]
-							selected_node,selected_task := MapWordToNodeAndTask(word,m, output_nodes_int, task.OutputTaskIDs)
+							//fileLineID or the key here is filename:linenumber:word-index
+							//manip_key_op_2 
+							//hashable is the entity you want to extract from the key to hash on if at all.
+							hashable := GetHashableStage1(line.FileLineID)
+							//manip end key -> usable entity to hash
+							selected_node,selected_task := MapHashableToNodeAndTask(hashable,m, output_nodes_int, task.OutputTaskIDs)
 							output_node_conn, ok  := streamConnTable.Load(selected_node)
 							if !ok {
 								fmt.Println("Output node not found")
@@ -765,20 +767,13 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 							}
 							output_nodes_int = append(output_nodes_int, node_int)
 						}
-						//buffermap has entries like filename:linenumber:word
-						// if err != nil {
-						// 	fmt.Println("Error in parsing the output node ID")
-						// 	return
-						// }
 						send_toBatch := make([]LineInfo, 0)
 						for fileLineID := range bufferMap {
 							send_toBatch = append(send_toBatch, LineInfo{FileLineID: fileLineID, Content: "1"})
 						}
 						for _, line := range send_toBatch {
-							//hash the word to get the output node
-							word_index_pair := strings.Split(line.FileLineID, ":")[2]
-							word := strings.Split(word_index_pair, "-")[0]
-							selected_node,selected_task := MapWordToNodeAndTask(word,m, output_nodes_int, task.OutputTaskIDs)
+							hashable := GetHashableStage1(line.FileLineID)
+							selected_node,selected_task := MapHashableToNodeAndTask(hashable,m, output_nodes_int, task.OutputTaskIDs)
 							output_node_conn, ok  := streamConnTable.Load(selected_node)
 							if !ok {
 								fmt.Println("Output node not found")
@@ -868,8 +863,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 						return
 					}
 				}
-				//hardcoded filename for now
-				PopulateStatefulOperatorFile(bufferMap_int, "word_count_state.txt")
+				PopulateStatefulOperatorFile(bufferMap_int, stateful_operator_state_file)
 				seen_storage_map, err = ReadLastBuffer(task.TaskLogFile)
 				if err != nil {
 					fmt.Println("Error in reading the last buffer")
@@ -879,9 +873,8 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 
 			}
 			counter:= 0
-			//batch := make([]LineInfo, 0)
-			ret_ack_map := make(map[string][]LineInfo)
 			//ret_ack_map key: NodeID-taskID value: []LineInfo (tuples that need to be batch acked)
+			ret_ack_map := make(map[string][]LineInfo)
 			total_tuples_processed := 0
 			output_map_global := make(map[string]string)
 			for msg := range chord {
@@ -943,20 +936,19 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 						var last_output string
 						for _, line := range input_batch {
 							//check if the word has been seen before
-							if _, ok := seen_storage_map[line.FileLineID]; ok {
+							key_stage_2 := GetStage2Key(line.FileLineID)
+							if _, ok := seen_storage_map[key_stage_2]; ok {
 								//send direct ack to the input node but drop the tuple here since it is a duplicate
 								sendAckInfoArray(input_node_conn.(net.Conn), []LineInfo{line}, inputNodeID, inputTaskID)
-								fmt.Println("Send Dupe Ack for  ", line.FileLineID)
+								fmt.Println("Send Dupe Ack for  ", key_stage_2)
 								continue
 							}
-							//format of the line is filename:lineNumber:word-index
-							word_index_pair := strings.Split(line.FileLineID, ":")[2]
-							word := strings.Split(word_index_pair, "-")[0]
-							//last_output = RunOperator(task.TaskOperatorName, word)
-							last_output = RunOperatorlocal(task.TaskOperatorName, word, task.TaskID)
+							input_stage_2 := GetInputForStage2(line)
+							//last_output = RunOperator(task.TaskOperatorName, input_stage_2)
+							last_output = RunOperatorlocal(task.TaskOperatorName, input_stage_2, task.TaskID)
 							total_tuples_processed++
 							//buffer here is stored as fileLineID:word to maintain uniqueness
-							seen_storage_map[line.FileLineID] = "1"
+							seen_storage_map[key_stage_2] = "1"
 						}
 						//deserialize the the last output
 						output_int_map := make(map[string]int)
@@ -967,9 +959,8 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 							output_string_map[k] = strconv.Itoa(v)
 						}
 						output_map_global = output_string_map
-						//batch = append(batch, input_batch...)
 						counter++
-						if counter == 50 {
+						if counter == stage_2_batch_size {
 							//PrintMapToConsole(output_string_map)
 							StoreOutputOnHydfs(output_string_map, task.TaskOutputFile, hydfsConn, task.TaskID)
 							StoreBufferOnHydfs(seen_storage_map, task.TaskLogFile, hydfsConn)
@@ -986,7 +977,6 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 						fmt.Println("Task "+ strconv.Itoa(task.TaskID) +" completed")
 					}
 			}
-			
 		}else{
 			fmt.Println("Invalid task stage")
 		}
