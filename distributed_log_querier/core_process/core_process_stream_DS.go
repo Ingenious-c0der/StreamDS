@@ -44,6 +44,10 @@ func planStreamDSTasks(hydfsConn *SafeConn, hydfsSrcFileName string, op1_name st
 		return nil
 	}
 	//get the partition size
+	if num_tasks == 0 || total_lines == 0{
+		fmt.Println("No Op on num_tasks or total_lines")
+		return nil
+	}
 	partitions := GetFairPartitions(total_lines, num_tasks)
 	fmt.Println("Partitions: ", partitions)
 	//first schedule stage 2 tasks
