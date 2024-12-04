@@ -700,8 +700,10 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 						fmt.Println(input_batch[0], " - ", input_batch[len(input_batch) - 1])
 						currentBatch := make([]LineInfo, 0)
 						for _, line := range input_batch {
-							//processed_output := RunOperator(task.TaskOperatorName, line.Content)
-							processed_output := RunOperatorlocal(task.TaskOperatorName, line.Content, task.TaskID)
+							//VM MARKER START
+							processed_output := RunOperator(task.TaskOperatorName, line.Content)
+							//processed_output := RunOperatorlocal(task.TaskOperatorName, line.Content, task.TaskID)
+							//VM MARKER END
 							output_list := GetOutputFromOperatorStage1(processed_output)
 							for _, output := range output_list {
 								//manip from source key -> first key
@@ -940,8 +942,10 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 								continue
 							}
 							input_stage_2 := GetInputForStage2(line)
-							//last_output = RunOperator(task.TaskOperatorName, input_stage_2)
-							last_output = RunOperatorlocal(task.TaskOperatorName, input_stage_2, task.TaskID)
+							//VM MARKER START
+							last_output = RunOperator(task.TaskOperatorName, input_stage_2)
+							//last_output = RunOperatorlocal(task.TaskOperatorName, input_stage_2, task.TaskID)
+							//VM MARKER END
 							total_tuples_processed++
 							//buffer here is stored as fileLineID:word to maintain uniqueness
 							seen_storage_map[key_stage_2] = "1"
@@ -1153,21 +1157,26 @@ func handleStreamDSConnectionMeta(isLeader bool,hydfsConn *SafeConn, taskChannel
 		go func (msg string){
 			if strings.Contains(msg, "ADD"){
 				//lands in as ADD address:PORT
+				//port is HYDFSGLOBALPORT on VMs
+				//need to still connect to StreamDSGlobalPort
+				//but need to calculate nodeID using the HydfsGlobalPort
 				msg = strings.Split(msg, " ")[1]
-				//expecting to receive address:UDPport here as token 	
+					
 				//VM MARKER
-				// address := strings.Split(msg, ":")[0] 
-				// address +=":"+ StreamDSGlobalPort
-				// msg = address
+				nodeID := GetPeerID(msg, m)
+				address := strings.Split(msg, ":")[0] 
+				address +=":"+ StreamDSGlobalPort
+				msg = address
 				//VM MARKER END
+
 				//VM MARKER CHECK ?
-				port := strings.Split(msg, ":")[1]
-				address := strings.Split(msg, ":")[0]
-				manip_port := subtractStrings(port, 3030)
-				manip_msg := address + ":" + manip_port
-				nodeID := GetPeerID(manip_msg, m)
+				// port := strings.Split(msg, ":")[1]
+				// address := strings.Split(msg, ":")[0]
+				// manip_port := subtractStrings(port, 3030)
+				// manip_msg := address + ":" + manip_port
+				// nodeID := GetPeerID(manip_msg, m)
 				//VM MARKER CHECK END
-				fmt.Println("Adding node " + strconv.Itoa(nodeID) + " at " + manip_msg)
+				fmt.Println("Adding node " + strconv.Itoa(nodeID) + " at " + msg)
 				if succ, conn := createStreamDsTCPConn(isLeader, hydfsConn, msg, taskChannelTable, streamTaskTable,streamConnTable,wg,m); succ {
 					ConnTableAdd(streamConnTable, nodeID, conn)
 					streamTaskTable.Store(nodeID, []*Task{})
@@ -1179,16 +1188,17 @@ func handleStreamDSConnectionMeta(isLeader bool,hydfsConn *SafeConn, taskChannel
 			}else if strings.Contains(msg, "REMOVE"){
 				msg = strings.Split(msg, " ")[1]
 				//VM MARKER
-				// address := strings.Split(msg, ":")[0]
-				// address += ":"+ StreamDSGlobalPort //TODO: make sure this works out
-				// msg = address
+				nodeID := GetPeerID(msg, m)
+				address := strings.Split(msg, ":")[0] 
+				address +=":"+ StreamDSGlobalPort
+				msg = address
 				//VM MARKER END
 				//VM MARKER CHECK ?
-				port := strings.Split(msg, ":")[1]
-				address := strings.Split(msg, ":")[0]
-				manip_port := subtractStrings(port, 3030)
-				manip_msg := address + ":" + manip_port
-				nodeID := GetPeerID(manip_msg, m)
+				// port := strings.Split(msg, ":")[1]
+				// address := strings.Split(msg, ":")[0]
+				// manip_port := subtractStrings(port, 3030)
+				// manip_msg := address + ":" + manip_port
+				// nodeID := GetPeerID(manip_msg, m)
 				//VM MARKER CHECK END
 				//get the conn for the removed node
 				conn_remove, ok := streamConnTable.Load(nodeID)

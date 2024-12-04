@@ -308,9 +308,9 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 				msg = strings.Split(msg, " ")[1]
 				//expecting to receive address:UDPport here as token 	
 				//VM MARKER
-				// address := strings.Split(msg, ":")[0] 
-				// address +=":"+ hyDFSGlobalPort 
-				// msg = address
+				address := strings.Split(msg, ":")[0] 
+				address +=":"+ hyDFSGlobalPort 
+				msg = address
 				//VM MARKER END
 				nodeID := GetPeerID(msg, m)
 				fmt.Println("Adding node " + strconv.Itoa(nodeID) + " at " + msg)
@@ -332,9 +332,9 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 			}else if strings.Contains(msg, "REMOVE"){
 				msg = strings.Split(msg, " ")[1]
 				//VM MARKER
-				// address := strings.Split(msg, ":")[0]
-				// address += ":"+ hyDFSGlobalPort //TODO: make sure this works out
-				// msg = address
+				address := strings.Split(msg, ":")[0]
+				address += ":"+ hyDFSGlobalPort //TODO: make sure this works out
+				msg = address
 				//VM MARKER END
 				nodeID := GetPeerID(msg, m)
 				KeyTableRemove(keyTable, nodeID)

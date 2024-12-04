@@ -350,7 +350,6 @@ func FetchCache(fileID string, downloadName string, fileNameMap *sync.Map) {
                     fmt.Printf("Error moving file %s to fetched: %v\n", downloadName, err)
                 } else {
                     //add a \n to the end of fetched file if it is not already there
-                    //VM MARKER START
                     content, err := os.ReadFile(fetchedFile)
                     if err == nil && len(content) > 0 {
                         if content[len(content)-1] != '\n' {
@@ -364,7 +363,6 @@ func FetchCache(fileID string, downloadName string, fileNameMap *sync.Map) {
                             }
                         }
                     }
-                    //VM MARKER END
                     hydfs_name,ok := fileNameMap.Load(fileID)
                     if ok{
                         fmt.Println("File "+ hydfs_name.(string) +" fetched as "+downloadName)

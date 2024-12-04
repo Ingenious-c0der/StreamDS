@@ -861,7 +861,7 @@ func CountLines(fileName string) (int, error) {
     }
 }
 func RunOperatorlocal(operator_name string, input string, taskID int) string {
-	operator_dir := GetOperatorsDir(taskID)
+	operator_dir := GetOperatorsDirLocal(taskID)
 	operator_path := filepath.Join(operator_dir, operator_name)
 	//fmt.Println("Operator path: ", operator_path)
 	// Create command
@@ -905,49 +905,49 @@ func RunOperatorlocal(operator_name string, input string, taskID int) string {
 }
 
 
-// func RunOperator(operator_name string, input string) string {
-// 	operator_dir := GetOperatorsDir()
-// 	operator_path := filepath.Join(operator_dir, operator_name)
+func RunOperator(operator_name string, input string) string {
+	operator_dir := GetOperatorsDir()
+	operator_path := filepath.Join(operator_dir, operator_name)
 
-// 	// Create command
-// 	cmd := exec.Command(operator_path)
+	// Create command
+	cmd := exec.Command(operator_path)
 	
-// 	// Create pipes for stdin, stdout, and stderr
-// 	stdin, err := cmd.StdinPipe()
-// 	if err != nil {
-// 		return fmt.Sprintf("Error creating stdin pipe: %v", err)
-// 	}
+	// Create pipes for stdin, stdout, and stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Sprintf("Error creating stdin pipe: %v", err)
+	}
 
-// 	// Capture both stdout and stderr
-// 	var stdout, stderr bytes.Buffer
-// 	cmd.Stdout = &stdout
-// 	cmd.Stderr = &stderr
+	// Capture both stdout and stderr
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
-// 	// Start the command
-// 	if err := cmd.Start(); err != nil {
-// 		return fmt.Sprintf("Error starting operator: %v", err)
-// 	}
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		return fmt.Sprintf("Error starting operator: %v", err)
+	}
 
-// 	// Write input to stdin and close it
-// 	_, err = fmt.Fprintln(stdin, input)  // Use Fprintln to add newline
-// 	if err != nil {
-// 		return fmt.Sprintf("Error writing to stdin: %v", err)
-// 	}
-// 	stdin.Close()
+	// Write input to stdin and close it
+	_, err = fmt.Fprintln(stdin, input)  // Use Fprintln to add newline
+	if err != nil {
+		return fmt.Sprintf("Error writing to stdin: %v", err)
+	}
+	stdin.Close()
 
-// 	// Wait for command to finish
-// 	err = cmd.Wait()
-// 	if err != nil {
-// 		// If there's stderr output, return it
-// 		if stderr.Len() > 0 {
-// 			return fmt.Sprintf("Operator error: %s", stderr.String())
-// 		}
-// 		return fmt.Sprintf("Error running operator: %v", err)
-// 	}
+	// Wait for command to finish
+	err = cmd.Wait()
+	if err != nil {
+		// If there's stderr output, return it
+		if stderr.Len() > 0 {
+			return fmt.Sprintf("Operator error: %s", stderr.String())
+		}
+		return fmt.Sprintf("Error running operator: %v", err)
+	}
 
-// 	result := strings.TrimSpace(stdout.String())
-// 	return result
-// }
+	result := strings.TrimSpace(stdout.String())
+	return result
+}
 
 
 func GetHYDFSSuccessorIDs(self_id int, keytable *sync.Map) (int, int){
@@ -1903,7 +1903,7 @@ func GetAddressfromHash(hash *string) string {
 	return tokens[0]
 }
 
-func GetOperatorsDir(taskID int) string{
+func GetOperatorsDirLocal(taskID int) string{
 	_,currentFile,_,_ := runtime.Caller(0)
 	dir := filepath.Dir(currentFile) //core_process
 	dir  = filepath.Dir(dir) //distributed_log_querier
@@ -1913,18 +1913,26 @@ func GetOperatorsDir(taskID int) string{
 	return dir
 }
 
+func GetOperatorsDir() string{
+	_,currentFile,_,_ := runtime.Caller(0)
+	dir := filepath.Dir(currentFile) //core_process
+	dir  = filepath.Dir(dir) //distributed_log_querier
+	dir = filepath.Join(dir, "operators")
+	return dir
+}
+
 func GetDistributedLogQuerierDir() string{
 	//for local testing call self_id 
 	_,currentFile,_,_ := runtime.Caller(0)
 	dir := filepath.Dir(currentFile) //core_process
 	dir  = filepath.Dir(dir) //distributed_log_querier
 	dir = filepath.Dir(dir) // G28 
-	//dir = filepath.Join(dir, "HYDFS") // G28/HYDFS
+	dir = filepath.Join(dir, "HYDFS") // G28/HYDFS
 	//fmt.Println("Directory for HYDFS original " + dir)
 	//VM MARKER
-	self_id := getSelf_id()
-	dir = filepath.Join(dir, "Nuke")
-	dir = filepath.Join(dir, "Node" + strconv.Itoa(self_id))
+	// self_id := getSelf_id()
+	// dir = filepath.Join(dir, "Nuke")
+	// dir = filepath.Join(dir, "Node" + strconv.Itoa(self_id))
 	//END VM MARKER
 	//create the directory if it does not exist
 	for _, dirSub := range []string{"FileBay", "appendBay", "ReplicaBay", "CacheBay", "ArrivalBay", "business", "temp", "Fetched"}{
@@ -1933,7 +1941,6 @@ func GetDistributedLogQuerierDir() string{
 			//fmt.Println("Directory created at " + filepath.Join(dir, dirSub))
 		}
 	}
-	//VM MARKER
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		os.Mkdir(dir, 0755)
 		fmt.Println("Directory created at " + dir)
@@ -1957,7 +1964,7 @@ func GetDistributedLogQuerierDir() string{
 			fmt.Println("Error writing file:", err)
 		}
 		}
-	//END VM MARKER
+	
 	return dir
 }
 
@@ -1997,34 +2004,33 @@ func sendUpdateToHYDFS(hydfsConn *SafeConn, message string){
 func convertNodeHashForHYDFS(nodeHash string) string {
 	token := strings.Split(nodeHash, "-")[0]
 	//VM MARKER
-	port := strings.Split(token, ":")[1]
-	address:= strings.Split(token, ":")[0]
-	a_int, err :=strconv.Atoi(port)
-	if err != nil {
-		fmt.Println("Error in converting string to int in port")
-		return ""
-	}
-	a_int = a_int - 2020
-	return address + ":" + strconv.Itoa(a_int)
+	// port := strings.Split(token, ":")[1]
+	// address:= strings.Split(token, ":")[0]
+	// a_int, err :=strconv.Atoi(port)
+	// if err != nil {
+	// 	fmt.Println("Error in converting string to int in port")
+	// 	return ""
+	// }
+	// a_int = a_int - 2020
+	// return address + ":" + strconv.Itoa(a_int)
 	//END VM MARKER
-	//return token 
+	return token 
 	
 }
 
-func convertNodeHashForStreamDS(nodeHash string) string{
-	token:= strings.Split(nodeHash, "-")[0]
+func convertNodeHashForStreamDS(nodeHash string) string{	
 	//VM MARKER stream DS
-	port := strings.Split(token, ":")[1]
-	address:= strings.Split(token, ":")[0]
-	a_int, err :=strconv.Atoi(port)
-	if err != nil {
-		fmt.Println("Error in converting string to int in port")
-		return ""
-	}
-	a_int = a_int +3030
-	return address + ":" + strconv.Itoa(a_int)
+	// port := strings.Split(token, ":")[1]
+	// address:= strings.Split(token, ":")[0]
+	// a_int, err :=strconv.Atoi(port)
+	// if err != nil {
+	// 	fmt.Println("Error in converting string to int in port")
+	// 	return ""
+	// }
+	// a_int = a_int +3030
+	// return address + ":" + strconv.Itoa(a_int)
 	//END VM MARKER
-	//return token
+	return nodeHash
 }
 
 //function expects the Sync.Map to be key (nodehash):string, value (status): string 

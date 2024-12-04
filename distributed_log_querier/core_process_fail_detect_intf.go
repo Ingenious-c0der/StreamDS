@@ -41,18 +41,18 @@ func main(){
 		isintro = true
 	}
 	//remove for local testing
-	// selfHYDFSPort:= os.Getenv("HSP")
-	// if selfHYDFSPort == "" {
-	// 	fmt.Println("Please provide the self port")
-	// 	return
-	// }
-	//establish the connection with hydfs layer using self pipe using safe conn 
-	//VM MARKER
-	selfHYDFSPort := subtractStrings(self_port, 3030)
+	selfHYDFSPort:= os.Getenv("HSP")
 	if selfHYDFSPort == "" {
-		fmt.Println("Error in substracting strings")
+		fmt.Println("Please provide the self port")
 		return
 	}
+	//establish the connection with hydfs layer using self pipe using safe conn 
+	//VM MARKER
+	// selfHYDFSPort := subtractStrings(self_port, 3030)
+	// if selfHYDFSPort == "" {
+	// 	fmt.Println("Error in substracting strings")
+	// 	return
+	// }
 	//VM MARKER END
 	safeConn := distributed_log_querier.StartSelfPipeHYDFS(selfHYDFSPort)
 	if safeConn == nil {
