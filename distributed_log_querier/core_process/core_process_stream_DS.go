@@ -960,8 +960,10 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 								continue
 							}
 							input_stage_2 := GetInputForStage2(line)
+							fmt.Println("Input for stage 2 ", input_stage_2)
 							//VM MARKER START
 							last_output = RunOperator(task.TaskOperatorName, input_stage_2)
+							fmt.Println("Last output ", last_output)
 							//last_output = RunOperatorlocal(task.TaskOperatorName, input_stage_2, task.TaskID)
 							//VM MARKER END
 							total_tuples_processed++

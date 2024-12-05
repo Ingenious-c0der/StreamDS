@@ -22,5 +22,7 @@ for item in os.listdir(dir_path):
     if os.path.isfile(os.path.join(dir_path, item)) and item.endswith(".txt"):
         print(f"Removing file: {os.path.join(dir_path, item)}")
         os.remove(os.path.join(dir_path, item))  # Remove the file
-
+#before shutting create an empty state file
+with open(os.path.join(dir_path, "word_count_state.txt"), "w") as f:
+    f.write("")
 print("Done!")

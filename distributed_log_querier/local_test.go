@@ -210,7 +210,7 @@ func testLocalOperatorRunSplitLine(t *testing.T) {
 func testLocalOperatorRunWordCount(t *testing.T) {
 	// testOperatorRuns(t)
 	ip_string := "hello"
-	output := distributed_log_querier.RunOperator("count_op_mac", ip_string)
+	output := distributed_log_querier.RunOperator("count_op", ip_string)
 	fmt.Println(output)
 	var countMap map[string]int
 	err := json.Unmarshal([]byte(output), &countMap)
