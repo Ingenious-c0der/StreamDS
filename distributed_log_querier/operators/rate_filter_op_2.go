@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 //Simple : Active ="no" & blockNum = 1000
-func main18() {
+func main17() {
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
