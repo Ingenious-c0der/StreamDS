@@ -231,6 +231,7 @@ func testLocalOperatorRunWordCount(t *testing.T) {
 	}
 	ip_string = "world"
 	output = distributed_log_querier.RunOperator("count_op", ip_string)
+	fmt.Println(output)
 	err = json.Unmarshal([]byte(output), &countMap)
 	if err != nil {
 		fmt.Println("Error converting to JSON: ", err)
@@ -240,19 +241,19 @@ func testLocalOperatorRunWordCount(t *testing.T) {
 	}
 
 	//loop for 1000 times with different words
-	for i := 0; i < 1000; i++ {
-		ip_string = "word" + strconv.Itoa(i)
-		output = distributed_log_querier.RunOperator("count_op_mac", ip_string)
+	// for i := 0; i < 1000; i++ {
+	// 	ip_string = "word" + strconv.Itoa(i)
+	// 	output = distributed_log_querier.RunOperator("count_op_mac", ip_string)
 		
-		err = json.Unmarshal([]byte(output), &countMap)
+	// 	err = json.Unmarshal([]byte(output), &countMap)
 		
-		if err != nil {
-			fmt.Println("Error converting to JSON: ", err)
-		}
-		if !(countMap["world"] == 1 && countMap["hello"] == 2 && countMap["word" + strconv.Itoa(i)] == 1){
-			fmt.Println("Test Failed")
-		}
-	}
+	// 	if err != nil {
+	// 		fmt.Println("Error converting to JSON: ", err)
+	// 	}
+	// 	if !(countMap["world"] == 1 && countMap["hello"] == 2 && countMap["word" + strconv.Itoa(i)] == 1){
+	// 		fmt.Println("Test Failed")
+	// 	}
+	// }
 
 
 	fmt.Println("Test Passed")

@@ -2,16 +2,13 @@ package main
 
 import (
 	"bufio"
-	//distributed_log_querier "distributed_log_querier/core_process"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
-	//"path/filepath"
 	"path/filepath"
-	"runtime"
 )
 
 
@@ -79,13 +76,11 @@ func (wct *WordCountTracker) updateCount(word string, stateFilePath string) {
 	}
 }
 
-func main10() {
+func main() {
 	// Create a new word count tracker
 	//stateFilePath := distributed_log_querier.GetDistributedLogQuerierDir()
 	//stateFilePath = filepath.Join(stateFilePath, "business","word_count_state.txt")
-	_,currentFile,_,_ := runtime.Caller(0)
-	//fmt.Println(currentFile)
-	dir := filepath.Dir(currentFile) //operator{i}
+	dir := "/home/sra9/g28/distributed_log_querier/operators"
 	stateFilePath := "word_count_state.txt"
 	stateFilePath = filepath.Join(dir,stateFilePath)
 	//fmt.Println(stateFilePath)

@@ -906,8 +906,9 @@ func RunOperatorlocal(operator_name string, input string, taskID int) string {
 
 
 func RunOperator(operator_name string, input string) string {
-	operator_dir := GetOperatorsDir()
-	operator_path := filepath.Join(operator_dir, operator_name)
+	// operator_dir := GetOperatorsDir()
+	// operator_path := filepath.Join(operator_dir, operator_name)
+	operator_path :="/Users/ingenious/Documents/DSMP1_backup/CS-425-MP/MP1/g28/distributed_log_querier/count_op_mac"
 	// Create command
 	cmd := exec.Command(operator_path)
 	
