@@ -357,6 +357,7 @@ func GetOutputFromOperatorStage1(processed_output string) []string {
 	err := json.Unmarshal([]byte(processed_output), &output_list)
 	if err != nil {
 		fmt.Println("Error in unmarshalling the processed output")
+		fmt.Println(processed_output)
 		return []string{}
 	}
 	return output_list

@@ -38,6 +38,7 @@ func planStreamDSTasks(hydfsConn *SafeConn, hydfsSrcFileName string, op1_name st
 		return nil
 	}
 	//get the total lines in the file 
+	time.Sleep(1 * time.Second)
 	total_lines, err := CountLines(hydfsSrcFileName)
 	if err != nil {
 		fmt.Println("Error in counting lines in the file")
@@ -367,12 +368,14 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 				if !success {
 					fmt.Println("Error in getting the file from hydfs max retry")
 				}
+				if success {
+					break
+				}
 			}
 			if !success {
 				fmt.Println("Error in getting the file from hydfs after max retries")
 				return
 			}
-		
 		}
 		partition := strings.Split(task.TaskPartitionRange, ":")
 		start_line, err1 := strconv.Atoi(partition[0])
