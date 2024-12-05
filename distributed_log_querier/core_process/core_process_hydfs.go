@@ -248,6 +248,11 @@ func handleHyDFS(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTable *
 				fmt.Println("Appending to file " + file_ID + " from " + strconv.Itoa(self_id)+"@"+local_filename)
 				appendFile(lc, connTable, keyTable, self_id, local_filename, hydfs_file_name, m)
 
+			}else if strings.HasPrefix(msg, "REMOVEREPLICA:"){
+				//format REMOVEREPLICA: fileID
+				//remove the replica for the given fileID
+				file_ID := strings.Split(msg, " ")[1]
+				RemoveReplicaLocal(file_ID)
 			}
 	}(msg)
 }}
@@ -321,7 +326,7 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 				} else {
 					fmt.Printf("Failed to connect to %s", msg)
 				}
-				//TODO implement ringRepair function here
+				
 				//relay the add message to StreamDS layer
 				metaConnMap.Range(func(key, value interface{}) bool {
 					if key != token{
@@ -329,6 +334,10 @@ func handleHyDFSMeta(lc *LamportClock,conn net.Conn, keyTable *sync.Map, connTab
 					}
 					return true
 				})
+				//TODO implement ringRepair function here
+
+				RingRepair(lc, connTable, keyTable, fileNameMap)
+				
 			}else if strings.Contains(msg, "REMOVE"){
 				msg = strings.Split(msg, " ")[1]
 				//VM MARKER

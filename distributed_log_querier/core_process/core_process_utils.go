@@ -977,6 +977,73 @@ func RunOperator(operator_name string, input string) string {
 	return result
 }
 
+func RingRepair(lc *LamportClock,connTable * sync.Map, KeyTable *sync.Map, fileNameMap *sync.Map){
+	//steps
+	//1. check if you hold any file that should be on the new node, if yes send it and the appends on it and remove it from your fileBay and append bay
+	//2. check if you hold the second replica for some file that you no longer need to maintain, if yes simply remove it
+	//do a directory walk on fileBay
+	dir := GetDistributedLogQuerierDir()
+	filebay_dir := filepath.Join(dir, "FileBay")
+	//walk over the file bay
+	filebay_files, err := os.ReadDir(filebay_dir)
+	if err != nil {
+		fmt.Println("no files in filebay right now", err)
+	}
+	self_id := getSelf_id()
+	is_prev_to_new := false
+	for _, file := range filebay_files {
+		base := strings.Split(file.Name(), ".")[0]
+		fileID_str := strings.Split(base, "_")[1]
+		fileID , err := strconv.Atoi(fileID_str)
+		if err != nil {
+			fmt.Println("Error converting fileID to int in ring repair ", fileID_str , err)
+		}
+		cood_id := GetHyDFSCoordinatorID(KeyTable, fileID)
+		if cood_id != self_id{
+			fmt.Println("Moving file to new node ", cood_id)
+			is_prev_to_new = true
+			conn, ok  := connTable.Load(cood_id)
+			if !ok{
+				fmt.Println("No connection found to the new node")
+				continue
+			}
+			forwardOriginal(lc, conn.(net.Conn), fileID_str, self_id)
+			//send remove replica message to the third successor who no longer needs to maintain the replica
+			_, second_successor_id:= GetHYDFSSuccessorIDs(self_id, KeyTable)
+			third_successor_id, _ := GetHYDFSSuccessorIDs(second_successor_id, KeyTable)
+			fmt.Println("Removing replica from ", third_successor_id, " for file ", fileID_str)
+			fmt.Println(self_id, " ", second_successor_id, " ", third_successor_id)
+			conn, ok  = connTable.Load(third_successor_id)
+			if !ok{
+				fmt.Println("No connection found to the third successor")
+				continue
+			}
+			sendHyDFSMessage(lc, conn.(net.Conn), "REMOVEREPLICA: " + fileID_str)
+		}
+	}
+	if is_prev_to_new{
+		//send the MAPSFILE: message to the new node
+		next_id_1, next_id_2 := GetHYDFSSuccessorIDs(self_id, KeyTable)
+		next_id := min(next_id_1, next_id_2)
+		conn, ok  := connTable.Load(next_id)
+		if !ok{
+			fmt.Println("No connection found to the next node")
+		}
+		sendFileMap(lc, conn.(net.Conn), fileNameMap)
+	}
+	
+}
+
+func sendFileMap(lc *LamportClock, conn net.Conn, fileNameMap *sync.Map) {
+	//iterate over sync map 
+	fileNameMap.Range(func(k, v interface{}) bool {
+		fileID := k.(string)
+		hydfsFileName := v.(string)
+		sendHyDFSMessage(lc, conn, "MAPSFILE: " + fileID + " " + hydfsFileName)
+		return true
+	})
+
+}
 
 func GetHYDFSSuccessorIDs(self_id int, keytable *sync.Map) (int, int){
 	//get the wrapped 2 successors of the current node
@@ -1131,10 +1198,78 @@ func isDirEmpty(dir string) (bool, error) {
     return false, nil
 }
 
+
+func RemoveReplicaLocal(fileID string){
+	filename:= "replica_" + fileID + ".txt"
+	if checkFileExists("ReplicaBay", filename){
+		removeFile(filepath.Join(GetDistributedLogQuerierDir(), "ReplicaBay", filename))
+	}
+	//remove the logical appends for this file
+	appendDir := filepath.Join(GetDistributedLogQuerierDir(), "appendBay")
+	nodeDirs, err := os.ReadDir(appendDir)
+	if err != nil {
+		fmt.Println("Error reading append directory:", err)
+		return
+	}
+	for _, nodeDir := range nodeDirs {
+		nodeDirPath := filepath.Join(appendDir, nodeDir.Name())
+		files, err := os.ReadDir(nodeDirPath)
+		if err != nil {
+			fmt.Println("Error reading append directory:", err)
+			continue
+		}
+		for _, file := range files {
+			fileName := file.Name()
+			fileID_cur := strings.Split(fileName, "_")[2]
+			if fileID_cur == fileID{
+				removeFile(filepath.Join(nodeDirPath, fileName))
+			}
+		}
+	}
+	fmt.Println("Replica removed for file " + fileID)
+}
+
 //handles the forwarding of both, append files and replicas
-func forwardReplica(lc *LamportClock, conn net.Conn, fileID string, node_ID int){
+func forwardReplica(lc *LamportClock, conn net.Conn, fileID string, nodeID int){
 	file_name:= "original_" + fileID + ".txt"
 	send_file_name:= "replica_" + fileID + ".txt"
+	sendHyDFSFile(lc, conn, "original", file_name, send_file_name)
+	//send the logical append files 
+	//check if there are any logical appends for this file 
+	dir := GetDistributedLogQuerierDir()
+	appendDir := filepath.Join(dir, "appendBay")
+	nodeDirs, err := os.ReadDir(appendDir)
+	if err != nil {
+		fmt.Println("Error reading append directory:", err)
+		return
+	}
+	//read the nodeDir folders
+	for _, nodeDirF := range nodeDirs {
+		nodeDir := filepath.Join(appendDir, nodeDirF.Name())
+		nodeID := nodeDirF.Name()
+		if _, err := os.Stat(nodeDir); os.IsNotExist(err) {
+			fmt.Println("No logical appends found for file - NO OP " + fileID)
+			return
+		}
+		files, err := os.ReadDir(nodeDir)
+		if err != nil {
+			fmt.Println("Error reading append directory:", err)
+			return
+		}
+		//send the logical append files
+		for _, file := range files {
+				node_file_path:= filepath.Join(nodeID, file.Name())
+				fmt.Println("Node file path for append" + node_file_path)
+				fmt.Println("Sending logical append file " + file.Name() + " to " + conn.RemoteAddr().String())
+				sendHyDFSFile(lc, conn, "append", node_file_path, file.Name())
+		}
+	}
+}
+
+//handles the forwarding of both, append files and original file
+func forwardOriginal(lc *LamportClock, conn net.Conn, fileID string, node_ID int){
+	file_name:= "original_" + fileID + ".txt"
+	send_file_name:= "original_" + fileID + ".txt"
 	sendHyDFSFile(lc, conn, "original", file_name, send_file_name)
 	//send the logical append files 
 	//check if there are any logical appends for this file 
