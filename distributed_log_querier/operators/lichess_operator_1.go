@@ -10,7 +10,7 @@ import (
 	"slices"
 )
 
-func main6() {
+func main14() {
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {

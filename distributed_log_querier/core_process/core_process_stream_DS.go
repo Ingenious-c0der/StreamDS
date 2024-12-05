@@ -2,7 +2,6 @@ package distributed_log_querier
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net"
@@ -718,6 +717,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 							//processed_output := RunOperatorlocal(task.TaskOperatorName, line.Content, task.TaskID)
 							//VM MARKER END
 							output_list := GetOutputFromOperatorStage1(processed_output)
+
 							for _, output := range output_list {
 								//manip from source key -> first key
 								key_stage_1 := GetStage1Key(line.FileLineID, output)
@@ -732,9 +732,10 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 									fmt.Println("Sent Dupe Ack for  ", key_stage_1)
 									continue
 								}
-								bufferMap[key_stage_1] = "1" //just a placeholder
-								seen_storage_map[key_stage_1] = "1"
-								currentBatch = append(currentBatch, LineInfo{FileLineID: key_stage_1, Content: "1"})
+								content := GetStage1Content(line.Content, output)
+								bufferMap[key_stage_1] = content//just a placeholder
+								seen_storage_map[key_stage_1] = content
+								currentBatch = append(currentBatch, LineInfo{FileLineID: key_stage_1, Content: content})
 							}
 						}
 						//write the buffer map to the hydfs
@@ -953,6 +954,7 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 							ret_ack_map[inputNodeID+"-"+inputTaskID] = input_batch
 						}
 						var last_output string
+						//var stateless_buffer map[string]string
 						for _, line := range input_batch {
 							//check if the word has been seen before
 							key_stage_2 := GetStage2Key(line.FileLineID)
@@ -963,9 +965,15 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 								continue
 							}
 							input_stage_2 := GetInputForStage2(line)
-							fmt.Println("Input for stage 2 ", input_stage_2)
+							//fmt.Println("Input for stage 2 ", input_stage_2)
 							//VM MARKER START
 							last_output = RunOperator(task.TaskOperatorName, input_stage_2)
+							if task.TaskState == "stateless"{
+								output_list := GetOutputFromOperatorStageStateless2(last_output)
+								for _, output := range output_list {
+									output_map_global[output] = "1"
+								}
+							}
 							fmt.Println("Last output ", last_output)
 							//last_output = RunOperatorlocal(task.TaskOperatorName, input_stage_2, task.TaskID)
 							//VM MARKER END
@@ -974,18 +982,13 @@ func runStreamDSTask(hydfsConn * SafeConn, task *Task, streamConnTable *sync.Map
 							seen_storage_map[key_stage_2] = "1"
 						}
 						//deserialize the the last output
-						output_int_map := make(map[string]int)
-						json.Unmarshal([]byte(last_output), &output_int_map)
-						//convert int values to string values
-						output_string_map := make(map[string]string)
-						for k, v := range output_int_map {
-							output_string_map[k] = strconv.Itoa(v)
+						if task.TaskState == "stateful"{
+							output_map_global = GetOutputFromOperatorStageStateful2(last_output)
 						}
-						output_map_global = output_string_map
 						counter++
 						if counter == stage_2_batch_size {
 							//PrintMapToConsole(output_string_map)
-							StoreOutputOnHydfs(output_string_map, task.TaskOutputFile, hydfsConn, task.TaskID)
+							StoreOutputOnHydfs(output_map_global, task.TaskOutputFile, hydfsConn, task.TaskID)
 							StoreBufferOnHydfs(seen_storage_map, task.TaskLogFile, hydfsConn)
 							//send ack to the input node
 							ResolveStoredAcks(&ret_ack_map, streamConnTable)

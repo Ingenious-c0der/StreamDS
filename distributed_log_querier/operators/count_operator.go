@@ -76,7 +76,7 @@ func (wct *WordCountTracker) updateCount(word string, stateFilePath string) {
 	}
 }
 
-func main() {
+func main12() {
 	// Create a new word count tracker
 	//stateFilePath := distributed_log_querier.GetDistributedLogQuerierDir()
 	//stateFilePath = filepath.Join(stateFilePath, "business","word_count_state.txt")

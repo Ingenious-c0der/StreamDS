@@ -374,8 +374,35 @@ func GetInputForStage2(line LineInfo) string {
 		// word := strings.Split(word_index_pair, "-")[0]
 		// return word
 		//word count end
-		zone_id := strings.Split(line.FileLineID, ":")[2]
-		return zone_id
+		// zone_id := strings.Split(line.FileLineID, ":")[2]
+		// return zone_id
+		return line.Content
+}
+
+func GetOutputFromOperatorStageStateful2(processed_output string) map[string]string {
+	output_int_map := make(map[string]int)
+	json.Unmarshal([]byte(processed_output), &output_int_map)
+	//convert int values to string values
+	output_string_map := make(map[string]string)
+	for k, v := range output_int_map {
+		output_string_map[k] = strconv.Itoa(v)
+	}
+	return output_string_map
+}
+
+func GetOutputFromOperatorStageStateless2(processed_output string) []string {
+	var output_list []string
+	err := json.Unmarshal([]byte(processed_output), &output_list)
+	if err != nil {
+		fmt.Println("Error in unmarshalling the processed output")
+		fmt.Println(processed_output)
+		return []string{}
+	}
+	return output_list
+}
+
+func GetStage1Content( line string, output string) string {
+	return line
 }
 
 //manip functions end
