@@ -79,7 +79,7 @@ func (wct *WordCountTracker) updateCount(word string, stateFilePath string) {
 	}
 }
 
-func main2() {
+func main10() {
 	// Create a new word count tracker
 	//stateFilePath := distributed_log_querier.GetDistributedLogQuerierDir()
 	//stateFilePath = filepath.Join(stateFilePath, "business","word_count_state.txt")
@@ -92,7 +92,7 @@ func main2() {
 	tracker := NewWordCountTracker(stateFilePath)
 	// Read input from stdin
 	scanner := bufio.NewScanner(os.Stdin)
-	if !scanner.Scan() {
+	if !scanner.Scan() { 
 		if err := scanner.Err(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
 			os.Exit(1)

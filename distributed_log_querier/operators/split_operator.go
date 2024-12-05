@@ -1,5 +1,3 @@
-//go:build main5
-// +build main5
 package main
 
 import (
@@ -10,7 +8,7 @@ import (
 	"strings"
 )
 
-func main() {
+func main7() {
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {

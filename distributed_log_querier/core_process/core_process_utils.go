@@ -909,6 +909,7 @@ func RunOperator(operator_name string, input string) string {
 	operator_dir := GetOperatorsDir()
 	operator_path := filepath.Join(operator_dir, operator_name)
 	// Create command
+	fmt.Println("Operator path: ", operator_path)
 	cmd := exec.Command(operator_path)
 	
 	// Create pipes for stdin, stdout, and stderr
