@@ -50,7 +50,10 @@ func main(){
 		return
 	}
 	//added to make sure node ids are same across hydfs and stream DS layer irrespective of the differering ports leading to different ids
-	manip_address := subtractStrings(streamDSGlobalPort, 3030)
+	manip_address := subtractStrings(streamDSGlobalPort, 4040)
+	//VM MARKER LOCAL
+	//manip_address := subtractStrings(streamDSGlobalPort, 3030)
+	//VM MARKER LOCAL END
 	selfStreamDSAddress = selfStreamDSAddress + ":" + manip_address
 	wg.Add(1)
 	go distributed_log_querier.StartStreamDS(isLead, safeConn,selfStreamDSAddress, hyDFSSelfPort, streamDSGlobalPort, &wg)
