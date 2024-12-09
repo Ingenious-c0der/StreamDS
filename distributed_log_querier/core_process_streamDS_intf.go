@@ -22,14 +22,14 @@ func main(){
 		return
 	}
 	//VM MARKER
-	// hyDFSSelfPort := os.Getenv("HSP")
-	// if hyDFSSelfPort == "" {
-	// 	fmt.Println("Please provide the hydfs self port")
-	// 	return
-	// }
+	hyDFSSelfPort := os.Getenv("HSP")
+	if hyDFSSelfPort == "" {
+		fmt.Println("Please provide the hydfs self port")
+		return
+	}
 	//VM MARKER END
 	//VM MARKER START
-	hyDFSSelfPort := subtractStrings(streamDSGlobalPort, 4040)
+	//hyDFSSelfPort := subtractStrings(streamDSGlobalPort, 4040)
 	//VM MARKER END
 	selfStreamDSAddress := distributed_log_querier.GetOutboundIP().String()
 	if selfStreamDSAddress == "" {
@@ -50,10 +50,8 @@ func main(){
 		return
 	}
 	//added to make sure node ids are same across hydfs and stream DS layer irrespective of the differering ports leading to different ids
-	//VM MARKER CHECK?
 	manip_address := subtractStrings(streamDSGlobalPort, 3030)
 	selfStreamDSAddress = selfStreamDSAddress + ":" + manip_address
-	//VM MARKER END
 	wg.Add(1)
 	go distributed_log_querier.StartStreamDS(isLead, safeConn,selfStreamDSAddress, hyDFSSelfPort, streamDSGlobalPort, &wg)
 	//wait

@@ -853,11 +853,8 @@ func runStreamDSTask(hydfsConn *SafeConn, leaderConn net.Conn, task *Task, taskC
 						}
 						//fmt.Println(input_batch[0], " - ", input_batch[len(input_batch)-1])
 						currentBatch := make([]LineInfo, 0)
-						for _, line := range input_batch {
-							//VM MARKER START
-							//processed_output := RunOperator(task.TaskOperatorName, line.Content)
+						for _, line := range input_batch {		
 							processed_output := RunOperatorlocal(task.TaskOperatorName, task.TaskOperatorInput[0], line.Content, task.TaskID)
-							//VM MARKER END
 							fmt.Println("Processed output: ", processed_output)
 							output_list := GetOutputFromOperatorStage1(processed_output)
 							fmt.Println("Output list: ", output_list)
@@ -1177,16 +1174,13 @@ func runStreamDSTask(hydfsConn *SafeConn, leaderConn net.Conn, task *Task, taskC
 						}
 						var input_stage_2 string
 						if task.TaskState == "stateful" {
-							fmt.Println("Stage 2 input", input_stage_2)
 							input_stage_2 = GetInputForStage2Stateful(line)
 							//fmt.Println("Input for stage 2 ", input_stage_2)
 						} else {
 							input_stage_2 = GetInputForStage2Stateless(line)
 						}
-						//VM MARKER START
-						//last_output = RunOperator(task.TaskOperatorName,task.TaskOperatorInput, input_stage_2)
+
 						last_output = RunOperatorlocal(task.TaskOperatorName, task.TaskOperatorInput[0], input_stage_2, task.TaskID)
-						//VM MARKER END
 						fmt.Println("Last output ", last_output)
 						if task.TaskState == "stateless" {
 							output_list := GetOutputFromOperatorStageStateless2(last_output)
@@ -1250,10 +1244,8 @@ func runStreamDSTask(hydfsConn *SafeConn, leaderConn net.Conn, task *Task, taskC
 					//sendAckInfoArray(input_node_conn.(net.Conn), batch, inputNodeID, inputTaskID)
 					//fmt.Println("Sacked")
 					if task.TaskState == "stateful" {
-						//clear the stateful operator state file
-						//VM MARKER START
+						//clear the stateful operator state file			
 						ClearOperatorStatelocal(stateful_operator_state_file, task.TaskID)
-						//VM MARKER END
 					}
 					fmt.Println("Task " + strconv.Itoa(task.TaskID) + " completed")
 					fmt.Println("Clocked @ ", time.Since(birth_time).Milliseconds(), "ms")
@@ -1556,23 +1548,23 @@ func handleStreamDSConnectionMeta(isLeader bool, hydfsConn *SafeConn, taskChanne
 				msg = strings.Split(msg, " ")[1]
 
 				//VM MARKER
-				// nodeID := GetPeerID(msg, m)
-				// address := strings.Split(msg, ":")[0]
-				// address += ":" + StreamDSGlobalPort
-				// msg = address
+				nodeID := GetPeerID(msg, m)
+				address := strings.Split(msg, ":")[0]
+				address += ":" + StreamDSGlobalPort
+				msg = address
 				//VM MARKER END
 
 				//VM MARKER LOCAL
-				nodeID := GetPeerID(msg, m)
-				port := strings.Split(msg, ":")[1]
-				address := strings.Split(msg, ":")[0]
-				port_int, err := strconv.Atoi(port)
-				if err != nil {
-					fmt.Println("Error in converting the port to int in ADD")
-					return
-				}
-				port_int = port_int + 3030 // elevate to streamDS port range
-				msg := address + ":" + strconv.Itoa(port_int)
+				// nodeID := GetPeerID(msg, m)
+				// address := strings.Split(msg, ":")[0]
+				// port := strings.Split(msg, ":")[1]
+				// port_int, err := strconv.Atoi(port)
+				// if err != nil {
+				// 	fmt.Println("Error in converting the port to int in ADD")
+				// 	return
+				// }
+				// port_int = port_int + 3030 // elevate to streamDS port range
+				// msg := address + ":" + strconv.Itoa(port_int)
 				//VM MARKER LOCAL END
 				fmt.Println("Adding node " + strconv.Itoa(nodeID) + " at " + msg)
 				if succ, conn := createStreamDsTCPConn(isLeader, hydfsConn, msg, taskChannelTable, streamTaskTable, streamConnTable, wg, m); succ {
