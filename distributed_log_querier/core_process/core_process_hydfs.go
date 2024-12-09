@@ -280,7 +280,6 @@ func createTCPConn(lc *LamportClock,address string, keyTable *sync.Map,connTable
 }
 
 func verifyCloseTCPConn(conn net.Conn, wg *sync.WaitGroup){
-	defer wg.Done()
 	defer conn.Close()
 }
 

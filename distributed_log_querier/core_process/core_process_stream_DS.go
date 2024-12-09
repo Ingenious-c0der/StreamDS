@@ -1532,7 +1532,6 @@ func createStreamDsTCPConn(isLeader bool, hydfsConn *SafeConn, address string, t
 
 // handles connection between streamDS and HyDFS layer
 func handleStreamDSConnectionMeta(isLeader bool, hydfsConn *SafeConn, taskChannelTable *sync.Map, failedNodeIDMap *sync.Map, StreamDSGlobalPort string, streamConnTable *sync.Map, streamTaskTable *sync.Map, wg *sync.WaitGroup, m int) {
-	defer wg.Done()
 	defer hydfsConn.conn.Close()
 	reader := bufio.NewReader(hydfsConn.conn)
 	for {
