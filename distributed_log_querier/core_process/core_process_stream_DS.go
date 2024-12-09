@@ -855,7 +855,6 @@ func runStreamDSTask(hydfsConn *SafeConn, leaderConn net.Conn, task *Task, taskC
 						currentBatch := make([]LineInfo, 0)
 						for _, line := range input_batch {		
 							processed_output := RunOperatorlocal(task.TaskOperatorName, task.TaskOperatorInput[0], line.Content, task.TaskID)
-							fmt.Println("Processed output: ", processed_output)
 							output_list := GetOutputFromOperatorStage1(processed_output)
 							fmt.Println("Output list: ", output_list)
 							for _, output := range output_list {
@@ -1466,16 +1465,16 @@ func handleStreamDSConnection(isLeader bool, hydfsConn *SafeConn, conn net.Conn,
 				//format TASKINFO: nodeID taskID \n update
 				if isLeader {
 					//REMOVE BEFORE FLIGHT
-					//header := strings.SplitN(msg, "\n", 2)[0]
+					header := strings.SplitN(msg, "\n", 2)[0]
 					body := strings.SplitN(msg, "\n", 2)[1]
 					output_map := make(map[string]string)
 					json.Unmarshal([]byte(body), &output_map)
-					// tokens := strings.Split(header, " ")
-					// targetTaskID := tokens[2]
-					// targetNodeId := tokens[1]
-					// fmt.Println("****TaskOutput ", targetTaskID, targetNodeId, "******")
-					// PrintMapToConsole(output_map)
-					// fmt.Println("****TaskOutput End******")
+					tokens := strings.Split(header, " ")
+					targetTaskID := tokens[2]
+					targetNodeId := tokens[1]
+					fmt.Println("****TaskOutput ", targetTaskID, targetNodeId, "******")
+					PrintMapToConsole(output_map)
+					fmt.Println("****TaskOutput End******")
 				} else {
 					fmt.Println("TASKINFO message received on non-leader node")
 				}
