@@ -526,7 +526,7 @@ func runStreamDSTask(hydfsConn *SafeConn, leaderConn net.Conn, task *Task, taskC
 			tuples, err = ReadFilePartition(source_file_name, start_line, end_line)
 			if err != nil {
 				fmt.Println("Error in reading the file partition ", err)
-				return
+				tuples = []LineInfo{}
 			}
 			if len(tuples) < total_tuples_to_read {
 				fmt.Println(len(tuples), total_tuples_to_read)
