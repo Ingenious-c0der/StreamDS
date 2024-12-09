@@ -2324,7 +2324,7 @@ func sendHyDFSFile(lc *LamportClock, conn net.Conn, fileType string, local_filen
 func receiveHyDFSFile(lc *LamportClock, message string) {
     lines := strings.SplitN(message, "\n", 2)
     if len(lines) < 2 {
-       fmt.Println("Invalid file message format", len(message), message)
+       fmt.Println("Invalid file message format", len(lines), message)
 	   return 
     }
     // Parse the header

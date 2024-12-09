@@ -969,7 +969,7 @@ func runStreamDSTask(hydfsConn *SafeConn, leaderConn net.Conn, task *Task, taskC
 				default:
 					//wait for unpause
 					//fmt.Println("Task "+strconv.Itoa(task.TaskID)+" paused")
-					fmt.Println("Current BufferMap size: ", len(bufferMap))
+					//fmt.Println("Current BufferMap size: ", len(bufferMap))
 					if paused {
 						if len(bufferMap) == 0 && complete && time.Since(birth_time).Seconds() > 10 {
 							fmt.Println("First Stage Probably completed")
