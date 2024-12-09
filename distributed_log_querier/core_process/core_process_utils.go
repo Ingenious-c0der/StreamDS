@@ -1851,7 +1851,7 @@ func createFile(lc *LamportClock, local_filename string ,HydfsfileName string,co
 		}
 		//broadcast the fileName to the replicas
 		broadcastHyDFSMessage(lc, connTable, "MAPSFILE: " + strconv.Itoa(fileID) + " " + HydfsfileName)
-		fileNameMap.Store(fileID, HydfsfileName)
+		fileNameMap.Store(strconv.Itoa(fileID), HydfsfileName)
 		fmt.Println("File " + fileName + " successfully created in HYDFS (local)")
 
 	}else{

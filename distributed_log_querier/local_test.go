@@ -252,7 +252,7 @@ func testLocalOperatorRunDemoApp2(t *testing.T, numLines int, param string) {
     for scanner.Scan(){
 		//count++
         line := scanner.Text()
-        output := distributed_log_querier.RunOperator("app2_1_mac", param, line)
+        output := distributed_log_querier.RunOperatorlocal("app2_1_mac", param, line)
         var result []string
         err := json.Unmarshal([]byte(output), &result)
         if err != nil {
@@ -261,7 +261,7 @@ func testLocalOperatorRunDemoApp2(t *testing.T, numLines int, param string) {
         }
         if len(result) > 0 {
 			//track_map[result[0]] = append(track_map[result[0]], count)
-            output = distributed_log_querier.RunOperator("count_op_mac", "None", result[0])
+            output = distributed_log_querier.RunOperatorlocal("count_op_mac", "None", result[0])
 	
             err := json.Unmarshal([]byte(output), &output_map)
             if err != nil {
@@ -296,7 +296,7 @@ func testLocalOperatorRunDemoApp1(t *testing.T, numLines int) {
     // Iterate over the specified number of lines
     for scanner.Scan(){
         line := scanner.Text()
-        output := distributed_log_querier.RunOperator("app1_1_mac", "Warning", line)
+        output := distributed_log_querier.RunOperatorlocal("app1_1_mac", "Warning", line)
         
         var result []string
         err := json.Unmarshal([]byte(output), &result)
@@ -306,7 +306,7 @@ func testLocalOperatorRunDemoApp1(t *testing.T, numLines int) {
         }
 
         if len(result) > 0 {
-            output = distributed_log_querier.RunOperator("app1_2_mac", "None", line)
+            output = distributed_log_querier.RunOperatorlocal("app1_2_mac", "None", line)
             
             err := json.Unmarshal([]byte(output), &result)
             if err != nil {
@@ -336,7 +336,7 @@ func testLocalOperatorRunDemoApp1(t *testing.T, numLines int) {
 // 		`-9823956.45410791,4883560.23398342,9,Streetname - Sesquicentennial,"6"" X 30""", ,Punched Telespar, ,Streetname,,,Champaign,9,,AERIAL,A,N600 Elm St,9.0,,{C2139729-5DE6-41DB-BF48-968844846A86}`,
 // 	}
 // 	for _, line := range lines {
-// 		output := distributed_log_querier.RunOperator("app1_1_mac", "Warning", line)
+// 		output := distributed_log_querier.RunOperatorlocal("app1_1_mac", "Warning", line)
 // 		//deserialize the output
 // 		var result []string
 // 		//fmt.Println(output)
@@ -345,7 +345,7 @@ func testLocalOperatorRunDemoApp1(t *testing.T, numLines int) {
 // 			fmt.Println("Error converting to JSON: ", err)
 // 		}
 // 		if len(result) > 0 {
-// 			output = distributed_log_querier.RunOperator("app1_2_mac", "None", line)
+// 			output = distributed_log_querier.RunOperatorlocal("app1_2_mac", "None", line)
 // 			//deserialize the output
 		
 // 			err := json.Unmarshal([]byte(output), &result)
@@ -372,7 +372,7 @@ func testLocalOperatorRunSimpleLichess(t *testing.T) {
 		"rj36zvil,False,1504448999828.0,1504452375791.0,5,outoftime,white,30+30,rajuppi,2454,lesauteurdeclasse,1746,e4 e6 d4 Bb4+ c3,C00,French Defense: Normal Variation,3",
 	}
 	for _, line := range lines {
-		output := distributed_log_querier.RunOperator("lichess_op_1_mac", line,"None")
+		output := distributed_log_querier.RunOperatorlocal("lichess_op_1_mac", line,"None")
 		//deserialize the output
 		var result []string
 		err := json.Unmarshal([]byte(output), &result)
@@ -380,7 +380,7 @@ func testLocalOperatorRunSimpleLichess(t *testing.T) {
 			fmt.Println("Error converting to JSON: ", err)
 		}
 		if len(result) > 0 {
-			output = distributed_log_querier.RunOperator("lichess_op_2_mac", "None", line)
+			output = distributed_log_querier.RunOperatorlocal("lichess_op_2_mac", "None", line)
 			//deserialize the output
 			var result []string
 			err := json.Unmarshal([]byte(output), &result)
@@ -405,7 +405,7 @@ func testLichessOperator(t *testing.T) {
 		"rj36zvil,False,1504448999828.0,1504452375791.0,5,outoftime,white,30+30,rajuppi,2454,lesauteurdeclasse,1746,e4 e6 d4 Bb4+ c3,C00,French Defense: Normal Variation,3",
 	}
 	for _, line := range lines {
-		output := distributed_log_querier.RunOperator("lichess_operator_1", "None", line)
+		output := distributed_log_querier.RunOperatorlocal("lichess_operator_1", "None", line)
 		//deserialize the output
 		fmt.Println("Output", output)
 		var result []string
@@ -422,7 +422,7 @@ func testRateFilterOperator(t *testing.T) {
 	"-9822327.37494088,4882272.83336435,3,626,14,0.75,6,63,CP75,CAMPUS $.25/HR,,3,Yes,500,500 S Third St,3,7:00 AM - 21:00 PM,Monday - Saturday,2 hr max in 3 hr period,,No Charge 9PM - 7AM,,"}
 
 	for _, input := range inputs {
-		output := distributed_log_querier.RunOperatorlocal("rate_filter_operator","None",input,0)
+		output := distributed_log_querier.RunOperatorlocallocal("rate_filter_operator","None",input,0)
 		//deserialize the output
 		var result []string
 		err := json.Unmarshal([]byte(output), &result)
@@ -548,7 +548,7 @@ func countLinesFromFile(t *testing.T) (int, error) {
 
 func testLocalOperatorRunSplitLine(t *testing.T) {
 	ip_string := "hello world this is a test"
-	output := distributed_log_querier.RunOperatorlocal("split_operator", "None", ip_string,0)
+	output := distributed_log_querier.RunOperatorlocallocal("split_operator", "None", ip_string,0)
 	var splitMap []string
 	err := json.Unmarshal([]byte(output), &splitMap)
 	if err != nil {
@@ -562,7 +562,7 @@ func testLocalOperatorRunSplitLine(t *testing.T) {
 func testLocalOperatorRunWordCount(t *testing.T) {
 	// testOperatorRuns(t)
 	ip_string := "hello"
-	output := distributed_log_querier.RunOperator("count_op","None", ip_string,)
+	output := distributed_log_querier.RunOperatorlocal("count_op","None", ip_string,)
 	fmt.Println(output)
 	var countMap map[string]int
 	err := json.Unmarshal([]byte(output), &countMap)
@@ -573,7 +573,7 @@ func testLocalOperatorRunWordCount(t *testing.T) {
 		fmt.Println("Test Failed")
 	}
 	ip_string = "hello"
-	output = distributed_log_querier.RunOperator("count_op", "None",ip_string)
+	output = distributed_log_querier.RunOperatorlocal("count_op", "None",ip_string)
 	err = json.Unmarshal([]byte(output), &countMap)
 	if err != nil {
 		fmt.Println("Error converting to JSON: ", err)
@@ -582,7 +582,7 @@ func testLocalOperatorRunWordCount(t *testing.T) {
 		//fmt.Println("Test Failed")
 	}
 	ip_string = "world"
-	output = distributed_log_querier.RunOperator("count_op","None", ip_string)
+	output = distributed_log_querier.RunOperatorlocal("count_op","None", ip_string)
 	fmt.Println(output)
 	err = json.Unmarshal([]byte(output), &countMap)
 	if err != nil {
@@ -595,7 +595,7 @@ func testLocalOperatorRunWordCount(t *testing.T) {
 	//loop for 1000 times with different words
 	// for i := 0; i < 1000; i++ {
 	// 	ip_string = "word" + strconv.Itoa(i)
-	// 	output = distributed_log_querier.RunOperator("count_op_mac", ip_string)
+	// 	output = distributed_log_querier.RunOperatorlocal("count_op_mac", ip_string)
 		
 	// 	err = json.Unmarshal([]byte(output), &countMap)
 		
