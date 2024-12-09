@@ -2400,6 +2400,9 @@ func MapHashableToNodeAndTask(word string, m int, nodeIDs []int, taskIDs [] int)
 	// fmt.Println("Word to be hashed " + word)
 	// fmt.Println(nodeIDs)
 	// fmt.Println(taskIDs)
+	if len(nodeIDs) > len(taskIDs){
+		fmt.Println(nodeIDs, taskIDs)
+	}
 	word_ID := GetFileID(word, m)
 	//find the nodeID
 	index:= word_ID % len(nodeIDs)
