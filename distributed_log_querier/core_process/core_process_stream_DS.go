@@ -1602,6 +1602,8 @@ func handleStreamDSConnectionMeta(isLeader bool, hydfsConn *SafeConn, taskChanne
 					if getSyncMapLength(failedNodeIDMap) == 2 {
 						time.Sleep(5 * time.Second) //wait for the hydfs layer to stabilize
 						rescheduleStreamDSTaskOnFailure(hydfsConn, failedNodeIDMap, streamConnTable, streamTaskTable)
+						//clear the failedNodeIDMap
+						failedNodeIDMap = &sync.Map{}
 					}
 				}
 			}

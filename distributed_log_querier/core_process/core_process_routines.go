@@ -244,9 +244,9 @@ func CacheBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}) {
                     fmt.Println("Error getting file info:", err)
                     continue
                 }
-                // Check if file is older than 60 seconds
+                // Check if file is older than 10 seconds
                 //fmt.Println("Checking file:", file.Name())
-                if currentTime.Sub(fileInfo.ModTime()) > 60*time.Second {
+                if currentTime.Sub(fileInfo.ModTime()) > 10*time.Second {
                     // File is stale, remove it
                     err := os.Remove(filepath.Join(cacheBayDir, file.Name()))
                     if err != nil {
