@@ -856,7 +856,9 @@ func runStreamDSTask(hydfsConn *SafeConn, leaderConn net.Conn, task *Task, taskC
 						for _, line := range input_batch {		
 							processed_output := RunOperatorlocal(task.TaskOperatorName, task.TaskOperatorInput[0], line.Content, task.TaskID)
 							output_list := GetOutputFromOperatorStage1(processed_output)
-							fmt.Println("Output list: ", output_list)
+							if len(output_list) > 0 {
+								fmt.Println("Output list: ", output_list)
+							}
 							for _, output := range output_list {
 								//manip from source key -> first key
 								key_stage_1 := GetStage1Key(line.FileLineID, output)
@@ -967,6 +969,7 @@ func runStreamDSTask(hydfsConn *SafeConn, leaderConn net.Conn, task *Task, taskC
 				default:
 					//wait for unpause
 					//fmt.Println("Task "+strconv.Itoa(task.TaskID)+" paused")
+					fmt.Println("Current BufferMap size: ", len(bufferMap))
 					if paused {
 						if len(bufferMap) == 0 && complete && time.Since(birth_time).Seconds() > 10 {
 							fmt.Println("First Stage Probably completed")
@@ -1180,9 +1183,11 @@ func runStreamDSTask(hydfsConn *SafeConn, leaderConn net.Conn, task *Task, taskC
 						}
 
 						last_output = RunOperatorlocal(task.TaskOperatorName, task.TaskOperatorInput[0], input_stage_2, task.TaskID)
-						fmt.Println("Last output ", last_output)
 						if task.TaskState == "stateless" {
 							output_list := GetOutputFromOperatorStageStateless2(last_output)
+							if len(output_list) > 0 {
+								fmt.Println("Output list: ", output_list)
+							}
 							temp_map := make(map[string]string)
 							if len(output_list) == 2 {
 								output_map_global[output_list[0]+"-"+output_list[1]] = "1"

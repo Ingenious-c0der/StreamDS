@@ -2397,9 +2397,9 @@ func GetHyDFSCoordinatorID(keyTable * sync.Map, fileID int) int {
 //used by stage1 to map the hash to the node
 func MapHashableToNodeAndTask(word string, m int, nodeIDs []int, taskIDs [] int) (int,int) {
 	//first find word hash
-	fmt.Println("Word to be hashed " + word)
-	fmt.Println(nodeIDs)
-	fmt.Println(taskIDs)
+	// fmt.Println("Word to be hashed " + word)
+	// fmt.Println(nodeIDs)
+	// fmt.Println(taskIDs)
 	word_ID := GetFileID(word, m)
 	//find the nodeID
 	index:= word_ID % len(nodeIDs)
