@@ -256,7 +256,7 @@ func CacheBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}) {
                     }
                 }
             }
-            time.Sleep(5 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(2 * time.Second) // Adjust sleep duration as needed
         }
     }
 }
