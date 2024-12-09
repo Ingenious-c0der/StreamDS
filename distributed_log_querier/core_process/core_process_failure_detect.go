@@ -481,6 +481,9 @@ func handleUDPMessage(message string, addr *net.UDPAddr, peerStatus *sync.Map, p
 
 		}
 
+	}else if strings.Contains(message, "KILLSTREAMDS:"){
+		fmt.Println("Killed")
+		os.Exit(1)
 	}
 }
 
@@ -557,7 +560,7 @@ func suspectNode(nodeHash string, peerStatus *sync.Map, peerLastPinged *sync.Map
 	}
 	go func() {
 		fmt.Println("Suspecting node", nodeHash)
-		time.Sleep(10 * time.Second)
+		time.Sleep(6 * time.Second)
 
 		// After timeout, check if the node is still suspected
 		suspectTime, exists := suspectList.Load(nodeHash)
@@ -705,6 +708,27 @@ func communicateUDPToPeer(message string, addr *net.UDPAddr) {
 
 		//fmt.Printf("Sent message: '%s' to %s\n", message, addr.String())
 }
+// func handleHydfsConnectionMeta(hydfsConn *SafeConn, wg *sync.WaitGroup) {
+// 	defer wg.Done()
+// 	defer hydfsConn.conn.Close()
+// 	reader := bufio.NewReader(hydfsConn.conn)
+// 	for {
+// 		msg, err := readMultilineMessage(reader, "END_OF_MSG")
+// 		if err != nil {
+// 			fmt.Println("Self TCP Pipe with HYDFS Layer Broke! Cannot receive failure updates anymore")
+// 			return
+// 		}
+// 		msg = strings.Trim(msg, "\n")
+// 		fmt.Println("Message received from HyDFS layer: ", msg)
+// 		go func(msg string) {
+// 			if strings.Contains(msg, "KILL: ") {
+// 				fmt.Println("Killed")
+// 				os.Exit(1)
+// 			}
+// 		}(msg)
+// 	}
+
+// }
 
 func StartSelfPipeHYDFS(selfPipePort string) *SafeConn {
 	conn, err := net.Dial("tcp", "localhost:"+selfPipePort)

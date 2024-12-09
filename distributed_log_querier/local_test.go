@@ -13,6 +13,9 @@ import (
 	"io"
 	"path/filepath"
 	"bytes"
+	"bufio"
+	"strings"
+	"regexp"
 )
 
 
@@ -34,11 +37,327 @@ func TestLocalTesting(t *testing.T) {
 	//testReadPartitioning(t)
 	//testLocalOperatorRunSplitLine(t)
 	//testLocalOperatorRunWordCount(t)
-	testLocalOperatorRunSimpleLichess(t)
+	//testLocalOperatorRunSimpleLichess(t)
 	//testDistinctNBuffersRead(t)
 	//testRateFilterOperator(t)
 	//testLichessOperator(t)
+	//testLocalOperatorRunDemoApp1(t,1000)
+	//miss on Guide count
+	//testLocalOperatorRunDemoApp2(t,5000,"Streetlight")
+	//testNodeTaskSorting(t)
+	//testResumeSplit(t)
+	testGetLastNDistinctTaskBuffers(t)
 }
+type BufferData struct {
+    Timestamp string
+    Length    int
+    TaskID    int
+    Data      map[string]string
+}
+func GetLastNDistinctTaskBufferslocal(fileName string, n int) ([]string, error) {
+    filePath := "/Users/ingenious/Documents/DSMP1_backup/CS-425-MP/MP1/g28/Nuke/Node721/Fetched/output1.txt"
+    file, err := os.Open(filePath)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    taskBuffers := make(map[int]string)
+    var currentBuffer strings.Builder
+    scanner := bufio.NewScanner(file)
+    readingBuffer := false
+
+    for scanner.Scan() {
+        line := scanner.Text()
+        if line == "--- BUFFER START ---" {
+            readingBuffer = true
+            currentBuffer.Reset()
+            currentBuffer.WriteString(line + "\n") // Include buffer start marker
+        } else if line == "--- BUFFER END ---" {
+            if readingBuffer {
+                currentBuffer.WriteString(line + "\n") // Include buffer end marker
+                // Extract TaskID from the buffer content
+                content := currentBuffer.String()
+                taskIDMatch := regexp.MustCompile(`TaskID: (\d+)`).FindStringSubmatch(content)
+                if len(taskIDMatch) > 1 {
+                    taskID, _ := strconv.Atoi(taskIDMatch[1])
+                    taskBuffers[taskID] = content
+                }
+            }
+            readingBuffer = false
+        } else if readingBuffer {
+            currentBuffer.WriteString(line + "\n")
+        }
+    }
+
+    if err := scanner.Err(); err != nil {
+        return nil, err
+    }
+
+    // Get sorted task IDs to ensure consistent ordering
+    var taskIDs []int
+    for id := range taskBuffers {
+        taskIDs = append(taskIDs, id)
+    }
+    sort.Sort(sort.Reverse(sort.IntSlice(taskIDs)))
+
+    // Get last n distinct buffers
+    lastNBuffers := make([]string, 0, n)
+    for _, id := range taskIDs {
+        if len(lastNBuffers) < n {
+            lastNBuffers = append(lastNBuffers, taskBuffers[id])
+        } else {
+            break
+        }
+    }
+
+    return lastNBuffers, nil
+}
+
+func testGetLastNDistinctTaskBuffers(t *testing.T) {
+    output, err := GetLastNDistinctTaskBufferslocal("output.txt", 3)
+    if err != nil {
+        t.Errorf("Error reading file: %v", err)
+        return
+    }
+
+    // Join with empty string since each buffer already has newlines
+    singleString := strings.Join(output, "")
+    
+    buffers, err := distributed_log_querier.ParseBuffers(singleString)
+    if err != nil {
+        t.Errorf("Error parsing buffers: %v", err)
+        return
+    }
+
+    fmt.Printf("Number of parsed buffers: %d\n", len(buffers))
+	total := 0
+    for i, buffer := range buffers {
+        fmt.Printf("Buffer %d - TaskID: %d, Data length: %d\n", 
+            i+1, buffer.TaskID, len(buffer.Data))
+		total += len(buffer.Data)
+    }
+	fmt.Println("Total: ", total)
+}
+
+
+// func ParseBuffers(input string) ([]BufferData, error) {
+//     // Split by buffer markers
+//     buffers := strings.Split(input, "--- BUFFER START ---")
+//     var results []BufferData
+    
+//     for _, buffer := range buffers {
+//         if len(strings.TrimSpace(buffer)) == 0 {
+//             continue
+//         }
+        
+//         // Remove buffer end marker
+//         buffer = strings.Replace(buffer, "--- BUFFER END ---", "", -1)
+        
+//         // Create a new buffer data instance
+//         var bufferData BufferData
+        
+//         // Split into lines
+//         lines := strings.Split(buffer, "\n")
+//         for _, line := range lines {
+//             line = strings.TrimSpace(line)
+//             if len(line) == 0 {
+//                 continue
+//             }
+            
+//             // Parse timestamp
+//             if strings.HasPrefix(line, "[") {
+//                 timestamp := strings.Trim(line, "[]")
+//                 bufferData.Timestamp = timestamp
+//             }
+            
+//             // Parse Length
+//             if strings.HasPrefix(line, "Length:") {
+//                 fmt.Sscanf(line, "Length: %d", &bufferData.Length)
+//             }
+            
+//             // Parse TaskID
+//             if strings.HasPrefix(line, "TaskID:") {
+//                 fmt.Sscanf(line, "TaskID: %d", &bufferData.TaskID)
+//             }
+//         }
+        
+//         // Find JSON portion and unmarshal it
+//         startJSON := strings.Index(buffer, "{")
+//         endJSON := strings.LastIndex(buffer, "}")
+//         if startJSON != -1 && endJSON != -1 {
+//             jsonStr := buffer[startJSON : endJSON+1]
+//             data := make(map[string]string)
+//             if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+//                 return nil, fmt.Errorf("error unmarshaling JSON: %v", err)
+//             }
+//             bufferData.Data = data
+//         }
+        
+//         results = append(results, bufferData)
+//     }
+    
+//     return results, nil
+// }
+
+func testResumeSplit(t *testing.T){
+	resume_msg := "RESUME: 202 6+145 146 147"
+	content:= strings.Split(resume_msg, "+")[0]
+	tokens := strings.Split(content, " ")
+	targetNodeID := tokens[1]
+	targetNodeID_int, err := strconv.Atoi(targetNodeID)
+	targetTaskID := tokens[2]
+	targetTaskID_int, err := strconv.Atoi(targetTaskID)
+	if err != nil {
+		fmt.Println("Error converting to int: ", err)
+	}
+	fmt.Println(targetNodeID_int, targetTaskID_int)
+	msg := "RESUME: " + tokens[2] + "+" + strings.Split(resume_msg, "+")[1]
+	fmt.Println(msg)
+	content2 := strings.Split(msg, "+")[1]
+	fmt.Println(content2)
+	output_node_ids := strings.Split(content2, " ")
+	fmt.Println(output_node_ids)
+}
+
+func testNodeTaskSorting(t *testing.T) {
+	nodes := []string{"645","220", "892"}
+	tasks:= []int {1,2,0}
+	sorted_nodes, sorted_tasks := distributed_log_querier.SortNodesByTaskIDs(nodes, tasks)
+	fmt.Println(sorted_nodes)
+	fmt.Println(sorted_tasks)
+}
+func testLocalOperatorRunDemoApp2(t *testing.T, numLines int, param string) {
+    // Open the file
+	removeFile := "/Users/ingenious/Documents/DSMP1_backup/CS-425-MP/MP1/g28/distributed_log_querier/operators/word_count_state.txt"
+	err := os.Remove(removeFile)
+	if err != nil {
+		fmt.Println("Error removing file: ", err)
+		
+	}
+	fileName := "Traffic_Signs_"+strconv.Itoa(numLines) + ".txt"
+	dir := "/Users/ingenious/Documents/DSMP1_backup/CS-425-MP/MP1/g28/misc"
+    file, err := os.Open(filepath.Join(dir, fileName))
+    if err != nil {
+        t.Fatalf("Failed to open file: %v", err)
+    }
+    defer file.Close()
+
+    // Create a scanner to read the file
+    scanner := bufio.NewScanner(file)
+	output_map := make(map[string]int)
+    // Iterate over the specified number of lines
+	//count:= 0 
+	//track_map := make(map[string][]int)
+    for scanner.Scan(){
+		//count++
+        line := scanner.Text()
+        output := distributed_log_querier.RunOperator("app2_1_mac", param, line)
+        var result []string
+        err := json.Unmarshal([]byte(output), &result)
+        if err != nil {
+            t.Errorf("Error converting to JSON: %v", err)
+            continue
+        }
+        if len(result) > 0 {
+			//track_map[result[0]] = append(track_map[result[0]], count)
+            output = distributed_log_querier.RunOperator("count_op_mac", "None", result[0])
+	
+            err := json.Unmarshal([]byte(output), &output_map)
+            if err != nil {
+                t.Errorf("Error converting to JSON: %v", err)
+                continue
+            }
+            
+        }
+
+    }
+	t.Logf("Final Result: %v", output_map)
+	//fmt.Println("Track Map: ", track_map)
+    // Check for errors during scanning
+    if err := scanner.Err(); err != nil {
+        t.Errorf("Error reading file: %v", err)
+    }
+}
+
+func testLocalOperatorRunDemoApp1(t *testing.T, numLines int) {
+    // Open the file
+	fileName := "Traffic_Signs_"+strconv.Itoa(numLines) + ".txt"
+	dir := "/Users/ingenious/Documents/DSMP1_backup/CS-425-MP/MP1/g28/misc"
+    file, err := os.Open(filepath.Join(dir, fileName))
+    if err != nil {
+        t.Fatalf("Failed to open file: %v", err)
+    }
+    defer file.Close()
+
+    // Create a scanner to read the file
+    scanner := bufio.NewScanner(file)
+
+    // Iterate over the specified number of lines
+    for scanner.Scan(){
+        line := scanner.Text()
+        output := distributed_log_querier.RunOperator("app1_1_mac", "Warning", line)
+        
+        var result []string
+        err := json.Unmarshal([]byte(output), &result)
+        if err != nil {
+            t.Errorf("Error converting to JSON: %v", err)
+            continue
+        }
+
+        if len(result) > 0 {
+            output = distributed_log_querier.RunOperator("app1_2_mac", "None", line)
+            
+            err := json.Unmarshal([]byte(output), &result)
+            if err != nil {
+                t.Errorf("Error converting to JSON: %v", err)
+                continue
+            }
+            t.Logf("Result: %v", result)
+        }
+    }
+
+    // Check for errors during scanning
+    if err := scanner.Err(); err != nil {
+        t.Errorf("Error reading file: %v", err)
+    }
+}
+
+// func testLocalOperatorRunDemoApp1(t * testing.T){
+// 	lines := []string{
+// 		`-9822752.01226842,4887653.93470103,1,Streetname - Mast Arm,"16"" X 42""", ,Traffic Signal Mast Arm, .1,Streetname, .2,D3-1,Champaign,1.1,Unnamed: 13,AERIAL,L,Mercury Dr,1.2,Unnamed: 18,{14F48419-04A7-4932-A850-884CA5DC67FA}`,
+// 		`-9822751.72354012,4887683.30017848,2,Streetname - Mast Arm,"16"" X 42""", ,Traffic Signal Mast Arm, ,Streetname, ,D3-1,Champaign,2,,AERIAL,L,N Market St,2.0,,{1B72759F-4509-4810-9774-9274A034E1AA}`,
+// 		`-9828662.01808626,4879483.90715145,3,No Outlet,"30"" X 30""", ,Punched Telespar,2010,Warning, ,W14-2,Champaign,3,,AERIAL,E,,3.0,,{4AEAB974-641C-4DF8-BE0B-AE40A0221559}`,
+// 		`-9828960.27366333,4879769.84381104,4,No Outlet,"30"" X 30""", ,Punched Telespar,2010,Warning, ,W14-2,Champaign,4,,AERIAL,E,,4.0,,{37ACD662-5FC1-493C-B247-A148B99DD781}`,
+// 		`-9827840.35123621,4880135.4828099,5,No Outlet,"30"" X 30""", ,Punched Telespar,2010,Warning, ,W14-2,Champaign,5,,AERIAL,E,,5.0,,{50CC3089-DB53-48A1-828D-838C3B31DDB2}`,
+// 		`-9827280.20101259,4879663.34446508,6,No Outlet,"30"" X 30""", ,Punched Telespar,2010,Warning, ,W14-2,Champaign,6,,AERIAL,E,,6.0,,{4F33D5FF-11DC-42F7-9DA2-3CE2EEA56697}`,
+// 		`-9827279.78269803,4879555.52935756,7,No Outlet,"30"" X 30""", ,Punched Telespar,2016,Warning, ,W14-2,Champaign,7,,AERIAL,E,,7.0,,{39BC922B-CA43-46CD-8894-88D910C0BD22}`,
+// 		`-9824139.11650266,4883693.20871616,8,Streetname - Sesquicentennial,"6"" X 30""", ,Unpunched Telespar, ,Streetname,,,Champaign,8,,AERIAL,A,W 600 Vine  St,8.0,,{1A3AB015-4D15-48C1-8D10-B66AB68FC7A5}`,
+// 		`-9823956.45410791,4883560.23398342,9,Streetname - Sesquicentennial,"6"" X 30""", ,Punched Telespar, ,Streetname,,,Champaign,9,,AERIAL,A,N600 Elm St,9.0,,{C2139729-5DE6-41DB-BF48-968844846A86}`,
+// 	}
+// 	for _, line := range lines {
+// 		output := distributed_log_querier.RunOperator("app1_1_mac", "Warning", line)
+// 		//deserialize the output
+// 		var result []string
+// 		//fmt.Println(output)
+// 		err := json.Unmarshal([]byte(output), &result)
+// 		if err != nil {
+// 			fmt.Println("Error converting to JSON: ", err)
+// 		}
+// 		if len(result) > 0 {
+// 			output = distributed_log_querier.RunOperator("app1_2_mac", "None", line)
+// 			//deserialize the output
+		
+// 			err := json.Unmarshal([]byte(output), &result)
+// 			if err != nil {
+// 				fmt.Println("Error converting to JSON: ", err)
+// 			}
+// 			fmt.Println(result)
+// 		}
+// 	}
+// }
+
+
 
 func testLocalOperatorRunSimpleLichess(t *testing.T) {
 	lines := []string{
@@ -53,7 +372,7 @@ func testLocalOperatorRunSimpleLichess(t *testing.T) {
 		"rj36zvil,False,1504448999828.0,1504452375791.0,5,outoftime,white,30+30,rajuppi,2454,lesauteurdeclasse,1746,e4 e6 d4 Bb4+ c3,C00,French Defense: Normal Variation,3",
 	}
 	for _, line := range lines {
-		output := distributed_log_querier.RunOperator("lichess_op_1_mac", line)
+		output := distributed_log_querier.RunOperator("lichess_op_1_mac", line,"None")
 		//deserialize the output
 		var result []string
 		err := json.Unmarshal([]byte(output), &result)
@@ -61,7 +380,7 @@ func testLocalOperatorRunSimpleLichess(t *testing.T) {
 			fmt.Println("Error converting to JSON: ", err)
 		}
 		if len(result) > 0 {
-			output = distributed_log_querier.RunOperator("lichess_op_2_mac", line)
+			output = distributed_log_querier.RunOperator("lichess_op_2_mac", "None", line)
 			//deserialize the output
 			var result []string
 			err := json.Unmarshal([]byte(output), &result)
@@ -86,7 +405,7 @@ func testLichessOperator(t *testing.T) {
 		"rj36zvil,False,1504448999828.0,1504452375791.0,5,outoftime,white,30+30,rajuppi,2454,lesauteurdeclasse,1746,e4 e6 d4 Bb4+ c3,C00,French Defense: Normal Variation,3",
 	}
 	for _, line := range lines {
-		output := distributed_log_querier.RunOperator("lichess_operator_1", line)
+		output := distributed_log_querier.RunOperator("lichess_operator_1", "None", line)
 		//deserialize the output
 		fmt.Println("Output", output)
 		var result []string
@@ -103,7 +422,7 @@ func testRateFilterOperator(t *testing.T) {
 	"-9822327.37494088,4882272.83336435,3,626,14,0.75,6,63,CP75,CAMPUS $.25/HR,,3,Yes,500,500 S Third St,3,7:00 AM - 21:00 PM,Monday - Saturday,2 hr max in 3 hr period,,No Charge 9PM - 7AM,,"}
 
 	for _, input := range inputs {
-		output := distributed_log_querier.RunOperatorlocal("rate_filter_operator", input,0)
+		output := distributed_log_querier.RunOperatorlocal("rate_filter_operator","None",input,0)
 		//deserialize the output
 		var result []string
 		err := json.Unmarshal([]byte(output), &result)
@@ -229,7 +548,7 @@ func countLinesFromFile(t *testing.T) (int, error) {
 
 func testLocalOperatorRunSplitLine(t *testing.T) {
 	ip_string := "hello world this is a test"
-	output := distributed_log_querier.RunOperatorlocal("split_operator", ip_string,0)
+	output := distributed_log_querier.RunOperatorlocal("split_operator", "None", ip_string,0)
 	var splitMap []string
 	err := json.Unmarshal([]byte(output), &splitMap)
 	if err != nil {
@@ -243,7 +562,7 @@ func testLocalOperatorRunSplitLine(t *testing.T) {
 func testLocalOperatorRunWordCount(t *testing.T) {
 	// testOperatorRuns(t)
 	ip_string := "hello"
-	output := distributed_log_querier.RunOperator("count_op", ip_string)
+	output := distributed_log_querier.RunOperator("count_op","None", ip_string,)
 	fmt.Println(output)
 	var countMap map[string]int
 	err := json.Unmarshal([]byte(output), &countMap)
@@ -254,7 +573,7 @@ func testLocalOperatorRunWordCount(t *testing.T) {
 		fmt.Println("Test Failed")
 	}
 	ip_string = "hello"
-	output = distributed_log_querier.RunOperator("count_op", ip_string)
+	output = distributed_log_querier.RunOperator("count_op", "None",ip_string)
 	err = json.Unmarshal([]byte(output), &countMap)
 	if err != nil {
 		fmt.Println("Error converting to JSON: ", err)
@@ -263,7 +582,7 @@ func testLocalOperatorRunWordCount(t *testing.T) {
 		//fmt.Println("Test Failed")
 	}
 	ip_string = "world"
-	output = distributed_log_querier.RunOperator("count_op", ip_string)
+	output = distributed_log_querier.RunOperator("count_op","None", ip_string)
 	fmt.Println(output)
 	err = json.Unmarshal([]byte(output), &countMap)
 	if err != nil {

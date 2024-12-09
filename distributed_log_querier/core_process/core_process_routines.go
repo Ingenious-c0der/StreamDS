@@ -58,7 +58,7 @@ func FileBayHandlerRoutine(wg *sync.WaitGroup, stopChan <-chan struct{}, keytabl
                     sendHyDFSMessage(lc, y_conn.(net.Conn), "REPEXIST " + strconv.Itoa(fileID))
                 }
             }
-            time.Sleep(2 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(100 * time.Millisecond) // Adjust sleep duration as needed
         }
     }
 }
@@ -159,18 +159,28 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                     if cood_ID == self_id{
                         if !checkFileExists("FileBay", "original_" + strconv.Itoa(fileID) + ".txt"){
                             fmt.Println("File "+file.Name()+ " is a stray append (file does not exist on local (cood) node)")
-                            fileLock.Close()
-                            //remove the file
-                            err = os.Remove(destinationPath)
-                            //also remove the file from arrival bay
-                            err2 := os.Remove(sourcePath)
-                            if err != nil {
-                                fmt.Printf("Error deleting file %s from arrival bay: %v\n", file.Name(), err)
-                            }
-                            if err2 != nil {
-                                fmt.Printf("Error deleting file %s from arrival bay: %v\n", file.Name(), err2)
-                            }
-                            continue
+                            fmt.Println("Storing anyway, optimistic replication")
+                            //wait for 3 seconds before deleting the file
+                            //if checkFileExists("FileBay", "original_" + strconv.Itoa(fileID) + ".txt"){
+                                //fmt.Println("File "+file.Name()+ " is no longer a stray append")
+                                fileLock.Close()
+                                //make sure the file is in the append bay and is visible 
+                                forwardAppendToReplica(lc, connTable, keyTable,self_id, destinationPath, file.Name())
+                            // }else{
+                            //     fileLock.Close()
+                            //     fmt.Println("Removed stray append file "+file.Name() +" after waiting for 5 seconds")
+                            //     //remove the file
+                            //     err = os.Remove(destinationPath)
+                            //     //also remove the file from arrival bay
+                            //     err2 := os.Remove(sourcePath)
+                            //     if err != nil {
+                            //         fmt.Printf("Error deleting file %s from arrival bay: %v\n", file.Name(), err)
+                            //     }
+                            //     if err2 != nil {
+                            //         fmt.Printf("Error deleting file %s from arrival bay: %v\n", file.Name(), err2)
+                            //     }
+                            //     continue
+                            // }
                         }else{
                             //release lock before forwarding the append
                             fileLock.Close()
@@ -188,7 +198,7 @@ func ArrivalBayHandlerRoutine(lc* LamportClock, connTable *sync.Map, keyTable *s
                 if err != nil {
                     fmt.Printf("Error deleting file %s from arrival bay: %v\n", file.Name(), err)
                 } else {
-                    fmt.Printf("File %s moved to internals and deleted from arrival bay\n", file.Name())
+                   // fmt.Printf("File %s moved to internals and deleted from arrival bay\n", file.Name())
                 }
 
                 fileLock.Close() // Release lock
@@ -307,7 +317,7 @@ func ReplicaBayHandlerRoutine(lc *LamportClock, connTable *sync.Map, keyTable *s
                 }
             }
 
-            time.Sleep(2 * time.Second) // Adjust sleep duration as needed
+            time.Sleep(100 * time.Millisecond) // Adjust sleep duration as needed
         }
     }
 }

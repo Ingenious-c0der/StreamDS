@@ -1,5 +1,5 @@
 # G28 MP Submission
-# Distributed Log Querier 
+# RainStorm MP4 
 ## By Sagar Abhyankar (sra9) and Aditya Kulkarni (aak14)
 
 This document explains how to run all the codes, their functionality and the general structure of the directories. 
@@ -7,6 +7,38 @@ This document explains how to run all the codes, their functionality and the gen
 At first the directory might feel a bit too messy, but its really not once you get the hang of it. Please go through to this entire document before attempting to run the code. Its not spaghetti code, its just comprehensive code with a multitude of features and no bugs! All the codes are expected to run properly, if they don't the problem is likely how they were launched. We do not use the well treaded go rpc for this assignment, but instead use Sockets to make it a little more fun and gain finer control on operations.(it made our lives worse but got much more to learn!) Pretty sure we have made covefe proud! :) 
 Anyway on to the actual explanation!
 
+## MP4 Details(RainStorm)
+Use the following commands to run on the VM. First start MP3 then MP4 and then MP2 in the end. 
+
+
+#### Step 1. Start MP3 (HYDFS)
+```bash
+HGP=5050 HSP=5051 go run core_process_hydfs_intf.go
+```
+#### Step 2. Start MP4 (RainStorm)
+##### for Leader/Scheduler
+```bash
+IS_LEADER=true SGP=9090 HSP=5051 go run core_process_streamDS_intf.go
+```
+##### for Normies
+```bash
+IS_LEADER= SGP=9090 HSP=5051 go run core_process_streamDS_intf.go
+```
+#### Step 3. Start MP2  (SWIM Failure detection)
+##### for INTRODUCER
+```bash
+INTRO_ADDRESS=127.0.0.1:8000 VERSION=1.0 SELF_PORT=8000 LOG_FILE_NAME=server.log IS_INTRODUCER=True HSP=5051 go run core_process_fail_detect_intf.go
+```
+
+##### for Normies (check the correct leader VM address)
+```bash
+INTRO_ADDRESS=172.22.156.92:8000 VERSION=1.0 SELF_PORT=8000 LOG_FILE_NAME=server.log HSP=5051 IS_INTRODUCER= go run core_process_fail_detect_intf.go
+```
+#### Step 4. Run RainStorm
+```bash
+RainStorm operator_name1 operator_state1 operator_name2 operator_state2 operator_1_input operator_2_input input_file output_file num_tasks dokill
+```
+use "None" where a parameter isn't valid, use " " to surround parameters that contain spaces.
 
 
 ## MP3 Details (HYDFS)

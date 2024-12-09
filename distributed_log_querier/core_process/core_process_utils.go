@@ -20,6 +20,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"bufio"
+	"slices"
+	"regexp"
 )
 
 
@@ -39,12 +41,51 @@ type Task struct{
 	TaskInputNode string // None or NodeID (just to catch any stray relays)
 	TaskState string // stateful or stateless 
 	TaskOperatorName string // if type is operator
+	TaskOperatorInput []string // "None" if no input else the input
 	TaskReceiveAck bool // if the task has received an ack from the output node
 	DoReplay bool // if the task needs to be replayed
 	TaskAssignedNode int // node id of the node the task is assigned to
 	OutputTaskIDs []int // task id of the task where the output needs to be delivered -1 if not applicable
 	InputTaskID int // task id of the task where the input is coming from empty if not applicable
 	NumTasks int // only for stage two to recognize when to stop (i.e. after collecting all the completes from previous stages) -1 if not applicable
+}
+
+//crashes the VM set from the leader, this includes till the failure detection layer, the hydfs layer and also the stream ds layer
+//this is a hard crash and the VM will not be able to recover
+//this is used for testing purposes only during demo
+func killStreamDSProcess(nodeId int, hydfsConn *SafeConn, streamConnTable *sync.Map){
+	//get the connection from the streamConnTable
+	conn, ok := streamConnTable.Load(nodeId)
+	if !ok{
+		fmt.Println("Connection not found in the streamConnTable")
+		return
+	}
+	//send the kill signal
+	_, err := conn.(net.Conn).Write([]byte("KILLSTREAMDS: END_OF_MSG\n"))
+	if err != nil{
+		fmt.Println("Error sending kill signal to node", nodeId)
+	}
+	//now kill the hydfs layer as well. 
+	hydfsConn.SafeWrite([]byte("KILLSTREAMDS: " + strconv.Itoa(nodeId) + "END_OF_MSG\n"))
+	//then also kill the failure detection layer
+	//need to use UDP message for this
+	conn_remote_address := conn.(net.Conn).RemoteAddr().String() 
+	fmt.Println("conn remote address ", conn_remote_address)
+	conn_remote_address_pure := strings.Split(conn_remote_address, ":")[0]
+	conn_remote_address_port := strings.Split(conn_remote_address, ":")[1]
+	//subtract 1000 from the port to get the failure detection layer port
+	//VM MARKER BEGIN
+	fd_port := subtractStrings(conn_remote_address_port, 1010)
+	fd_address := conn_remote_address_pure + ":" + fd_port
+	fmt.Println("fd address ", fd_address)
+	addr, err := net.ResolveUDPAddr("udp", fd_address)
+	if err != nil {
+		fmt.Println("Error resolving UDP address to kill Failure detection layer")
+		return
+	}
+	communicateUDPToPeer("KILLSTREAMDS:",addr)
+	fmt.Println("Kill message sent to the VM" )
+	//VM MARKER END
 }
 
 
@@ -54,7 +95,7 @@ func sendTask(conn net.Conn, task Task) error {
 		return err
 	}
 	// Add header and footer
-	data = append([]byte("TASK: "), data...)
+	data = append([]byte("TASK:+: "), data...)
 	data = append(data, []byte("END_OF_MSG\n")...)
 	_, err = conn.Write(data)
 	return err
@@ -129,8 +170,9 @@ func QuantifyHydfsFile(hydfsConn *SafeConn,hydfsDestFileName string, n int) ([]s
 	output,error := GetLastNDistinctTaskBuffers(hydfsDestFileName, n)
 	return output, error
 }
+
 func GetLastNDistinctTaskBuffers(fileName string, n int) ([]string, error) {
-	filePath := filepath.Join(GetDistributedLogQuerierDir(), "Fetched", fileName)
+    filePath := filepath.Join(GetDistributedLogQuerierDir(), "Fetched", fileName)
     file, err := os.Open(filePath)
     if err != nil {
         return nil, err
@@ -141,23 +183,27 @@ func GetLastNDistinctTaskBuffers(fileName string, n int) ([]string, error) {
     var currentBuffer strings.Builder
     scanner := bufio.NewScanner(file)
     readingBuffer := false
-    var currentTaskID int
 
     for scanner.Scan() {
         line := scanner.Text()
         if line == "--- BUFFER START ---" {
             readingBuffer = true
             currentBuffer.Reset()
+            currentBuffer.WriteString(line + "\n") // Include buffer start marker
         } else if line == "--- BUFFER END ---" {
             if readingBuffer {
-                taskBuffers[currentTaskID] = currentBuffer.String()
+                currentBuffer.WriteString(line + "\n") // Include buffer end marker
+                // Extract TaskID from the buffer content
+                content := currentBuffer.String()
+                taskIDMatch := regexp.MustCompile(`TaskID: (\d+)`).FindStringSubmatch(content)
+                if len(taskIDMatch) > 1 {
+                    taskID, _ := strconv.Atoi(taskIDMatch[1])
+                    taskBuffers[taskID] = content
+                }
             }
             readingBuffer = false
         } else if readingBuffer {
             currentBuffer.WriteString(line + "\n")
-            if strings.HasPrefix(line, "TaskID: ") {
-                currentTaskID, _ = strconv.Atoi(strings.TrimPrefix(line, "TaskID: "))
-            }
         }
     }
 
@@ -165,16 +211,138 @@ func GetLastNDistinctTaskBuffers(fileName string, n int) ([]string, error) {
         return nil, err
     }
 
+    // Get sorted task IDs to ensure consistent ordering
+    var taskIDs []int
+    for id := range taskBuffers {
+        taskIDs = append(taskIDs, id)
+    }
+    sort.Sort(sort.Reverse(sort.IntSlice(taskIDs)))
+
+    // Get last n distinct buffers
     lastNBuffers := make([]string, 0, n)
-    for _, buffer := range taskBuffers {
-        lastNBuffers = append(lastNBuffers, buffer)
-        if len(lastNBuffers) > n {
-            lastNBuffers = lastNBuffers[1:]
+    for _, id := range taskIDs {
+        if len(lastNBuffers) < n {
+            lastNBuffers = append(lastNBuffers, taskBuffers[id])
+        } else {
+            break
         }
     }
+
     return lastNBuffers, nil
 }
 
+
+
+
+// func GetLastNDistinctTaskBuffers(fileName string, n int) ([]string, error) {
+// 	filePath := filepath.Join(GetDistributedLogQuerierDir(), "Fetched", fileName)
+//     file, err := os.Open(filePath)
+//     if err != nil {
+//         return nil, err
+//     }
+//     defer file.Close()
+
+//     taskBuffers := make(map[int]string)
+//     var currentBuffer strings.Builder
+//     scanner := bufio.NewScanner(file)
+//     readingBuffer := false
+//     var currentTaskID int
+
+//     for scanner.Scan() {
+//         line := scanner.Text()
+//         if line == "--- BUFFER START ---" {
+//             readingBuffer = true
+//             currentBuffer.Reset()
+//         } else if line == "--- BUFFER END ---" {
+//             if readingBuffer {
+//                 taskBuffers[currentTaskID] = currentBuffer.String()
+//             }
+//             readingBuffer = false
+//         } else if readingBuffer {
+//             currentBuffer.WriteString(line + "\n")
+//             if strings.HasPrefix(line, "TaskID: ") {
+//                 currentTaskID, _ = strconv.Atoi(strings.TrimPrefix(line, "TaskID: "))
+//             }
+//         }
+//     }
+
+//     if err := scanner.Err(); err != nil {
+//         return nil, err
+//     }
+
+//     lastNBuffers := make([]string, 0, n)
+//     for _, buffer := range taskBuffers {
+//         lastNBuffers = append(lastNBuffers, buffer)
+//         if len(lastNBuffers) > n {
+//             lastNBuffers = lastNBuffers[1:]
+//         }
+//     }
+//     return lastNBuffers, nil
+// }
+type BufferData struct {
+    Timestamp string
+    Length    int
+    TaskID    int
+    Data      map[string]string
+}
+func ParseBuffers(input string) ([]BufferData, error) {
+    // Split by buffer markers
+    buffers := strings.Split(input, "--- BUFFER START ---")
+    var results []BufferData
+    
+    for _, buffer := range buffers {
+        if len(strings.TrimSpace(buffer)) == 0 {
+            continue
+        }
+        
+        // Remove buffer end marker
+        buffer = strings.Replace(buffer, "--- BUFFER END ---", "", -1)
+        
+        // Create a new buffer data instance
+        var bufferData BufferData
+        
+        // Split into lines
+        lines := strings.Split(buffer, "\n")
+        for _, line := range lines {
+            line = strings.TrimSpace(line)
+            if len(line) == 0 {
+                continue
+            }
+            
+            // Parse timestamp
+            if strings.HasPrefix(line, "[") {
+                timestamp := strings.Trim(line, "[]")
+                bufferData.Timestamp = timestamp
+            }
+            
+            // Parse Length
+            if strings.HasPrefix(line, "Length:") {
+                fmt.Sscanf(line, "Length: %d", &bufferData.Length)
+            }
+            
+            // Parse TaskID
+            if strings.HasPrefix(line, "TaskID:") {
+                fmt.Sscanf(line, "TaskID: %d", &bufferData.TaskID)
+            }
+        }
+        
+        // Find JSON portion and unmarshal it
+        startJSON := strings.Index(buffer, "{")
+        endJSON := strings.LastIndex(buffer, "}")
+        if startJSON != -1 && endJSON != -1 {
+            jsonStr := buffer[startJSON : endJSON+1]
+            data := make(map[string]string)
+            if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+                return nil, fmt.Errorf("error unmarshaling JSON: %v", err)
+            }
+            bufferData.Data = data
+        }
+        
+        results = append(results, bufferData)
+    }
+    
+    return results, nil
+}
 // func GetLastNDistinctTaskBuffers(fileName string, n int) ([]map[string]int, error) {
 // 	//dir := GetDistributedLogQuerierDir()
 // 	filePath := filepath.Join("/Users/ingenious/Documents/DSMP1_backup/CS-425-MP/MP1/g28/Nuke/Node721/Fetched", fileName)
@@ -227,13 +395,14 @@ func GetLastNDistinctTaskBuffers(fileName string, n int) ([]string, error) {
 
 //     return lastNBuffers, nil
 // }
-
-
-//todo new : does this have to be in business dir
-func PopulateStatefulOperatorFile(state map[string]int, filename string) error {
+//populates state in the operator directory
+func PopulateStatefulOperatorFile(state map[string]int, filename string, taskID int) error {
     // Ensure the directory exists
-    dir := GetDistributedLogQuerierDir()
-	filePath := filepath.Join(dir, "business", filename)
+    //dir := GetDistributedLogQuerierDir()
+	//VM MARKER 
+	dir := GetOperatorsDirLocal(taskID)
+	//VM MARKER END
+	filePath := filepath.Join(dir, filename)
     // Create or truncate the file
     file, err := os.Create(filePath)
     if err != nil {
@@ -298,12 +467,39 @@ func PrintMapToConsole(inputMap map[string]string){
 	}
 }
 
+// Helper function to split the command string, respecting quotes
+func splitWithQuotes(s string) []string {
+    var result []string
+    var current string
+    inQuotes := false
+    for _, r := range s {
+        switch {
+        case r == '"' || r == '\'':
+            inQuotes = !inQuotes
+        case r == ' ' && !inQuotes:
+            if current != "" {
+                result = append(result, current)
+                current = ""
+            }
+        default:
+            current += string(r)
+        }
+    }
+    if current != "" {
+        result = append(result, current)
+    }
+    return result
+}
+
+
 func StoreBufferOnHydfs(bufferMap map[string] string, filename string, hydfsConn *SafeConn) {
 	// Write buffer to HYDFS
 	buffer_string := FormatAsBuffer(bufferMap)
 	WriteBufferToBusiness(filename,buffer_string)
 	//call append on file
 	hydfsConn.SafeWrite([]byte("TASKAPPEND: " +  filename + " " + filename + "END_OF_MSG\n"))
+	time.Sleep(1 * time.Second) // let hydfs catch up
+	
 }
 
 func StoreOutputOnHydfs(outputMap map[string]string, filename string, hydfsConn *SafeConn, taskID int) {
@@ -312,6 +508,8 @@ func StoreOutputOnHydfs(outputMap map[string]string, filename string, hydfsConn 
 	WriteBufferToBusiness(filename,output_string)
 	//call append on file
 	hydfsConn.SafeWrite([]byte("TASKAPPEND: " +  filename + " " + filename + "END_OF_MSG\n"))
+	time.Sleep(1 * time.Second) // let hydfs catch up
+	
 }
 
 //manip functions for source tasks
@@ -360,7 +558,14 @@ func GetOutputFromOperatorStage1(processed_output string) []string {
 		fmt.Println(processed_output)
 		return []string{}
 	}
-	return output_list
+	if len(output_list) == 2{
+		//merge the two strings into one
+		merged_string := output_list[0] + "-"+output_list[1]
+		return []string{merged_string}
+	}else{
+		return output_list
+	}
+	
 }
 
 
@@ -368,7 +573,7 @@ func GetStage2Key(k string) string {
 	return k
 }
 
-func GetInputForStage2(line LineInfo) string {
+func GetInputForStage2Stateless(line LineInfo) string {
 		//format of the line is filename:lineNumber:word-index
 		// word_index_pair := strings.Split(line.FileLineID, ":")[2]
 		// word := strings.Split(word_index_pair, "-")[0]
@@ -377,6 +582,11 @@ func GetInputForStage2(line LineInfo) string {
 		// zone_id := strings.Split(line.FileLineID, ":")[2]
 		// return zone_id
 		return line.Content
+}
+
+func GetInputForStage2Stateful(line LineInfo) string {
+	cat:= strings.Split(line.FileLineID, ":")[2]
+	return cat
 }
 
 func GetOutputFromOperatorStageStateful2(processed_output string) map[string]string {
@@ -407,6 +617,28 @@ func GetStage1Content( line string, output string) string {
 
 //manip functions end
 
+func ClearOperatorStatelocal(filename string, taskID int){
+	dir := GetOperatorsDirLocal(taskID)
+	filePath := filepath.Join(dir, filename)
+	err := os.Remove(filePath)
+	if err != nil {
+		fmt.Println("Error deleting operator state file:", err)
+	}
+	//recreate a new file 	
+	file, err := os.Create(filePath)
+	if err != nil {
+		fmt.Println("Error creating operator state file:", err)
+	}
+	defer file.Close()
+}
+
+func ClearOperatorState(filename string){
+	for i := 0; i < 10; i++ {
+		ClearOperatorStatelocal(filename, i)
+	}
+}
+
+
 func ReadFilePartition(filename string, start, end int) ([]LineInfo, error) {
 	dir := GetDistributedLogQuerierDir()
 	filePath := filepath.Join(dir, "Fetched", filename)
@@ -415,8 +647,19 @@ func ReadFilePartition(filename string, start, end int) ([]LineInfo, error) {
         return nil, err
     }
     defer file.Close()
-
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if fileInfo.Size() == 0 {
+		return nil, fmt.Errorf("file is empty: %s", filePath)
+	}
     scanner := bufio.NewScanner(file)
+	//650 kb buffer
+	const maxCapacity = 800 * 1024
+    buf := make([]byte, maxCapacity)
+    scanner.Buffer(buf, maxCapacity)
+	
     lines := []LineInfo{}
     lineNum := 0
 
@@ -442,7 +685,7 @@ func ReadFilePartition(filename string, start, end int) ([]LineInfo, error) {
     return lines, nil
 }
 
-func NewTask(taskID int, taskNodeID int , taskType string, taskStatus string, taskStage string, taskInputType string, taskOutputType string, taskOutputNodes []string, taskOutputFile string, taskInputFile string, taskPartitionRange string, taskInputNode string, taskState string, taskOperatorName string, taskReceiveAck bool, doReplay bool, TaskOutputIDs []int, num_tasks int) *Task {
+func NewTask(taskID int, taskNodeID int , taskType string, taskStatus string, taskStage string, taskInputType string, taskOutputType string, taskOutputNodes []string, taskOutputFile string, taskInputFile string, taskPartitionRange string, taskInputNode string, taskState string, taskOperatorName string, taskReceiveAck bool, doReplay bool, TaskOutputIDs []int, num_tasks int, taskOperatorInput []string, InputTaskID int) *Task {
 	return &Task{
 		TaskID: taskID,
 		TaskAssignedNode: taskNodeID,
@@ -464,6 +707,8 @@ func NewTask(taskID int, taskNodeID int , taskType string, taskStatus string, ta
 		DoReplay: doReplay,
 		OutputTaskIDs: TaskOutputIDs, 
 		NumTasks: num_tasks,
+		TaskOperatorInput: taskOperatorInput,
+		InputTaskID: InputTaskID,
 	}
 }
 
@@ -473,6 +718,176 @@ func GetFileFromHydfs(hydfsConn *SafeConn,filename string, waitLatencyMS int) bo
 	return WaitOnFile(filename, waitLatencyMS)
 }
 
+//used for removing failed node ids from the list and insert new node ids
+func mergeTaskList(old_node_list []string, new_node_list []int, failed_node_list []int) []string {
+	fmt.Println("Old node list : ", old_node_list)
+	fmt.Println("New node list : ", new_node_list)
+	fmt.Println("Failed node list : ", failed_node_list)
+	old_node_list_int := make([]int, 0)
+	for _, node_id := range old_node_list {
+		node_id_int, err := strconv.Atoi(node_id)
+		if err != nil {
+			fmt.Println("Error converting node id to int")
+			continue
+		}
+		old_node_list_int = append(old_node_list_int, node_id_int)
+	}
+	//remove failed node ids
+	removed_failed_node_ids := make([]int, 0)
+	for _, node_id := range old_node_list_int {
+		if !slices.Contains(failed_node_list, node_id){
+			removed_failed_node_ids = append(removed_failed_node_ids, node_id)
+		}
+	}
+	//add new node ids
+	removed_failed_node_ids = append(removed_failed_node_ids, new_node_list...)
+	//convert back to string
+	removed_failed_node_ids_str := make([]string, 0)
+	for _, node_id := range removed_failed_node_ids {
+		removed_failed_node_ids_str = append(removed_failed_node_ids_str, strconv.Itoa(node_id))
+	}
+	fmt.Println("Merged node list : ", removed_failed_node_ids_str)
+	return removed_failed_node_ids_str
+}
+
+func sendResumeMessageToAllStage1Nodes(streamTaskTable *sync.Map, streamConnTable *sync.Map, output_node_ids []string){
+	fmt.Println("Sending resume message to all stage 1 nodes")
+		streamTaskTable.Range(func(key, value interface{}) bool {
+			tasks := value.([]*Task)
+			for _, taskitr := range tasks {
+				if taskitr.TaskType == "operator" && taskitr.TaskStage == "first" {
+					//send the resume message to the input node
+					taskNodeID := taskitr.TaskAssignedNode
+					taskNodeConn, ok := streamConnTable.Load(taskNodeID)
+					if !ok {
+						fmt.Println("Input node connection not found in send resume ", taskNodeID)
+						return true
+					}
+					//update the output nodes of the task
+					taskitr.TaskOutputNodes = output_node_ids
+					//RESUME send format RESUME: targetNodeID targettaskID+new_output_node_id/s (PS. the targetNodeID is filtered out once receipt)
+					resume_msg := "RESUME: " + strconv.Itoa(taskitr.TaskAssignedNode) + " " + strconv.Itoa(taskitr.TaskID) + "+" + strings.Join(taskitr.TaskOutputNodes, " ")
+					time.Sleep(20 * time.Millisecond)
+					taskNodeConn.(net.Conn).Write([]byte(resume_msg + "END_OF_MSG\n"))
+				}
+			}
+			return true
+		})
+}
+
+func SortNodesByTaskIDs(nodes []string, taskIDs []int) ([]string, []int) {
+    if len(nodes) != len(taskIDs) {
+        fmt.Println("Error: Mismatch in length of nodes and taskIDs")
+        return nodes, taskIDs
+    }
+
+    type NodeTaskPair struct {
+        node   string
+        taskID int
+    }
+
+    pairs := make([]NodeTaskPair, len(nodes))
+    for i := range nodes {
+        pairs[i] = NodeTaskPair{node: nodes[i], taskID: taskIDs[i]}
+    }
+
+    sort.Slice(pairs, func(i, j int) bool {
+        return pairs[i].taskID < pairs[j].taskID
+    })
+
+    sortedNodes := make([]string, len(nodes))
+    sortedTaskIDs := make([]int, len(taskIDs))
+    for i, pair := range pairs {
+        sortedNodes[i] = pair.node
+        sortedTaskIDs[i] = pair.taskID
+    }
+
+    return sortedNodes, sortedTaskIDs
+}
+
+//serializes the output node ids according to the taskids and returns the ordered list
+//useful to maintain nodeid->taskid mapping for resuming tasks
+type OutputNodeTaskPair struct{
+	nodeID int
+	taskID int
+}
+func serializeOutputNodes(outputNodes []string,streamTaskTable *sync.Map) [] string{ 
+	fmt.Println("Output nodes not serial : " , outputNodes)
+	nodeTask_stage2_pairs := make([]OutputNodeTaskPair, 0)
+	streamTaskTable.Range(func(key, value interface{}) bool {
+		tasks := value.([]*Task)
+		for _, taskitr := range tasks {
+			if taskitr.TaskType == "operator" && taskitr.TaskStage == "second" {
+				nodeTask_stage2_pairs = append(nodeTask_stage2_pairs, OutputNodeTaskPair{nodeID: taskitr.TaskAssignedNode, taskID: taskitr.TaskID})
+			}
+		}
+		return true
+	})
+	//sort the pairs by taskID
+	sort.Slice(nodeTask_stage2_pairs, func(i, j int) bool {
+		return nodeTask_stage2_pairs[i].taskID < nodeTask_stage2_pairs[j].taskID
+	})
+	//serialize the output nodes
+	output_node_ids := make([]string, 0)
+	for _, pair := range nodeTask_stage2_pairs {
+		output_node_ids = append(output_node_ids, strconv.Itoa(pair.nodeID))
+	}
+	//perform sanity check to ensure the output nodes match 
+	for _, nodeID := range outputNodes {
+		if !slices.Contains(output_node_ids, nodeID){
+			fmt.Println("Sanity check failed Output node not found in the serialized list")
+			fmt.Println("Output nodes sent : " , outputNodes)
+			fmt.Println("Output nodes serialized : ", output_node_ids)
+
+		}
+	}
+	fmt.Println("Output nodes serial : " , output_node_ids)
+	return output_node_ids
+}
+func printStreamTaskTable(streamTaskTable *sync.Map){
+	fmt.Println("Stream Task Table : ", getSyncMapLength(streamTaskTable))
+	streamTaskTable.Range(func(key, value interface{}) bool {
+		fmt.Print(key, " : ")
+		tasks := value.([]*Task)
+		for _, task := range tasks {
+			fmt.Print(task.TaskID," ")
+		}
+		fmt.Println()
+		return true
+	})
+}
+
+func GetNodeIDForTask(taskID int, streamTaskTable *sync.Map) int {
+	nodeID := -1
+	streamTaskTable.Range(func(key, value interface{}) bool {
+		tasks := value.([]*Task)
+		for _, taskitr := range tasks {
+			if taskitr.TaskID == taskID {
+				nodeID = taskitr.TaskAssignedNode
+				return false
+			}
+		}
+		return true
+	})
+	return nodeID
+
+}
+
+func GetSampleOutputNodes(streamTaskTable* sync.Map) []string {
+	var outputNodes []string
+	streamTaskTable.Range(func(key, value interface{}) bool {
+		tasks := value.([]*Task)
+		for _, task := range tasks {
+			if task.TaskType == "operator" && task.TaskStage == "first" {
+				outputNodes = task.TaskOutputNodes
+				return false // stop iteration
+			}
+			
+		}
+		return true // continue iteration
+	})
+	return outputNodes
+}
 
 func GetNodeWithLeastTasks(streamTaskTable *sync.Map) int {
 	minTasks := 100000 
@@ -553,6 +968,7 @@ func FormatAsBuffer(input map[string]string) string {
 
 //solves the problem of text -> file for appends
 //used business instead of temp 
+//it will overwrite so no need to worry about existing files
 func WriteBufferToBusiness(filename string, buffer string){
 	dir := GetDistributedLogQuerierDir()
 	temp_dir := filepath.Join(dir, "business")
@@ -835,6 +1251,42 @@ func (lc *LamportClock) Increment() int64 {
     return atomic.AddInt64(&lc.timestamp, 1)
 }
 
+//does not handle closing task channel and removing it from the taskChannelTable
+func EndTask(leaderConn net.Conn, streamTaskTable *sync.Map, task *Task) {
+	self_id := getSelf_id()
+	_, err := leaderConn.Write([]byte("COMPLETEDTASK: " +strconv.Itoa(self_id) +" "+strconv.Itoa(task.TaskID) + "END_OF_MSG\n"))
+	if err != nil {
+		fmt.Println("Error sending task completion message to leader")
+	}
+	//remove the task from the streamTaskTable
+	pre_tasks, ok  := streamTaskTable.Load(self_id)
+	if ok{
+		tasks := pre_tasks.([]*Task)
+		new_tasks := make([]*Task, 0)
+		for _, t := range tasks {
+			if t.TaskID != task.TaskID {
+				new_tasks = append(new_tasks, t)
+			}
+		}
+		streamTaskTable.Store(self_id, new_tasks)
+		fmt.Println("Task removed from the streamTaskTable successfully")
+	}else{
+		fmt.Println("Task to remove not found in the streamTaskTable")
+	}
+}
+
+func RelayOutputToLeader(leaderConn net.Conn, output_map map[string]string, task *Task) {
+    outputJSON, err := json.Marshal(output_map)
+    if err != nil {
+        fmt.Println("Error marshaling output map:", err)
+        return
+    }
+    message := fmt.Sprintf("TASKINFO: %d %d\n%sEND_OF_MSG\n", self_id, task.TaskID, outputJSON)
+    _, err = leaderConn.Write([]byte(message))
+    if err != nil {
+        fmt.Println("Error sending task info to leader:", err)
+    }
+}
 
 // returns the paritions as a list(int) of lists like [[1,300],[301,600],[601,900]] for 900 lines and 3 tasks
 func GetFairPartitions(lines int, num_tasks int) [][]int {
@@ -888,7 +1340,7 @@ func CountLines(fileName string) (int, error) {
         }
     }
 }
-func RunOperatorlocal(operator_name string, input string, taskID int) string {
+func RunOperatorlocal(operator_name string, parameter string, input string, taskID int) string {
 	operator_dir := GetOperatorsDirLocal(taskID)
 	operator_path := filepath.Join(operator_dir, operator_name)
 	//fmt.Println("Operator path: ", operator_path)
@@ -912,9 +1364,20 @@ func RunOperatorlocal(operator_name string, input string, taskID int) string {
 	}
 
 	// Write input to stdin and close it
-	_, err = fmt.Fprintln(stdin, input)  // Use Fprintln to add newline
-	if err != nil {
-		return fmt.Sprintf("Error writing to stdin: %v", err)
+	if parameter == "None"{
+		_, err = fmt.Fprintln(stdin, input)  // Use Fprintln to add newline
+		if err != nil {
+			fmt.Println(operator_path, parameter, input, taskID)
+			return fmt.Sprintf("Error writing to stdin1: %v", err)
+		}
+	}else{
+		// Write parameter and input to stdin, separated by newline
+		//parameter passed first
+		_, err = fmt.Fprintf(stdin, "%s\n%s\n", parameter, input)
+		if err != nil {
+			fmt.Println(operator_path, parameter, input, taskID)
+			return fmt.Sprintf("Error writing to stdin2: %v", err)
+		}
 	}
 	stdin.Close()
 
@@ -933,7 +1396,7 @@ func RunOperatorlocal(operator_name string, input string, taskID int) string {
 }
 
 
-func RunOperator(operator_name string, input string) string {
+func RunOperator(operator_name string, parameter string, input string) string {
 	 operator_dir := GetOperatorsDir()
 	 operator_path := filepath.Join(operator_dir, operator_name)
 	//operator_path :="/Users/ingenious/Documents/DSMP1_backup/CS-425-MP/MP1/g28/distributed_log_querier/count_op_mac"
@@ -957,9 +1420,18 @@ func RunOperator(operator_name string, input string) string {
 	}
 
 	// Write input to stdin and close it
-	_, err = fmt.Fprintln(stdin, input)  // Use Fprintln to add newline
-	if err != nil {
-		return fmt.Sprintf("Error writing to stdin: %v", err)
+	if parameter == "None"{
+		_, err = fmt.Fprintln(stdin, input)  // Use Fprintln to add newline
+		if err != nil {
+			return fmt.Sprintf("Error writing to stdin: %v", err)
+		}
+	}else{
+		// Write parameter and input to stdin, separated by newline
+		//parameter passed first
+		_, err = fmt.Fprintf(stdin, "%s\n%s\n", parameter, input)
+		if err != nil {
+			return fmt.Sprintf("Error writing to stdin: %v", err)
+		}
 	}
 	stdin.Close()
 
@@ -990,7 +1462,6 @@ func RingRepair(lc *LamportClock,connTable * sync.Map, KeyTable *sync.Map, fileN
 		fmt.Println("no files in filebay right now", err)
 	}
 	self_id := getSelf_id()
-	is_prev_to_new := false
 	for _, file := range filebay_files {
 		base := strings.Split(file.Name(), ".")[0]
 		fileID_str := strings.Split(base, "_")[1]
@@ -1001,35 +1472,46 @@ func RingRepair(lc *LamportClock,connTable * sync.Map, KeyTable *sync.Map, fileN
 		cood_id := GetHyDFSCoordinatorID(KeyTable, fileID)
 		if cood_id != self_id{
 			fmt.Println("Moving file to new node ", cood_id)
-			is_prev_to_new = true
 			conn, ok  := connTable.Load(cood_id)
 			if !ok{
 				fmt.Println("No connection found to the new node")
 				continue
 			}
-			forwardOriginal(lc, conn.(net.Conn), fileID_str, self_id)
+			//send the MAPSFILE: message to the new node
+			fmt.Println("Sending file map to the new node", cood_id)
+			sendFileMap(lc, conn.(net.Conn), fileNameMap)
+			forwardOriginal(lc, conn.(net.Conn), fileID_str, fileNameMap)
 			//send remove replica message to the third successor who no longer needs to maintain the replica
 			_, second_successor_id:= GetHYDFSSuccessorIDs(self_id, KeyTable)
+			//third_successor_id, _ := GetHYDFSSuccessorIDs(second_successor_id, KeyTable)
+			fmt.Println("Removing replica from ", second_successor_id, " for file ", fileID_str)
+			fmt.Println(self_id, " ", second_successor_id, " ")
+			//
+			conn, ok  = connTable.Load(second_successor_id)
+			if !ok{
+				fmt.Println("No connection found to the third successor")
+				continue
+			}
+			fmt.Println("Removing file ", file.Name())
+			removeFile(filepath.Join(filebay_dir, file.Name()))
+			sendHyDFSMessage(lc, conn.(net.Conn), "REMOVEREPLICA: " + fileID_str)
+
+		}else{
+			//send best effort replica removal message to the third successor
+			_, second_successor_id:= GetHYDFSSuccessorIDs(self_id, KeyTable)
 			third_successor_id, _ := GetHYDFSSuccessorIDs(second_successor_id, KeyTable)
-			fmt.Println("Removing replica from ", third_successor_id, " for file ", fileID_str)
-			fmt.Println(self_id, " ", second_successor_id, " ", third_successor_id)
-			conn, ok  = connTable.Load(third_successor_id)
+			fmt.Println("Removing replica from if it exists ", third_successor_id, " for file ", fileID_str)
+			fmt.Println(self_id, " ", third_successor_id, " ")
+			//
+			conn, ok  := connTable.Load(third_successor_id)
 			if !ok{
 				fmt.Println("No connection found to the third successor")
 				continue
 			}
 			sendHyDFSMessage(lc, conn.(net.Conn), "REMOVEREPLICA: " + fileID_str)
+			
 		}
-	}
-	if is_prev_to_new{
-		//send the MAPSFILE: message to the new node
-		next_id_1, next_id_2 := GetHYDFSSuccessorIDs(self_id, KeyTable)
-		next_id := min(next_id_1, next_id_2)
-		conn, ok  := connTable.Load(next_id)
-		if !ok{
-			fmt.Println("No connection found to the next node")
-		}
-		sendFileMap(lc, conn.(net.Conn), fileNameMap)
+
 	}
 	
 }
@@ -1082,6 +1564,11 @@ func (lc *LamportClock) GetTimestamp() int64 {
     return atomic.LoadInt64(&lc.timestamp)
 }
 
+func GetTasks(arr []int, cond string) (p int ,q int){
+	x := string(cond[len(cond)-1])
+	if x == "1" {return arr[len(arr)-2], arr[len(arr)-1]}
+	if x == "2" {return arr[0], arr[1]}else{return arr[len(arr)-2], arr[len(arr)-1]}
+}
 
 
 //file to show return the values stored locally in all the bays (used for store command)
@@ -1198,39 +1685,46 @@ func isDirEmpty(dir string) (bool, error) {
     return false, nil
 }
 
+func cleanlocalFileSystem(){
+	dir := GetDistributedLogQuerierDir()
+	//remove the directory fetched
+	deleteDirectoriesExceptBusiness(dir)
+	GetDistributedLogQuerierDir() // to remake the directory
+}
 
 func RemoveReplicaLocal(fileID string){
 	filename:= "replica_" + fileID + ".txt"
 	if checkFileExists("ReplicaBay", filename){
 		removeFile(filepath.Join(GetDistributedLogQuerierDir(), "ReplicaBay", filename))
-	}
-	//remove the logical appends for this file
-	appendDir := filepath.Join(GetDistributedLogQuerierDir(), "appendBay")
-	nodeDirs, err := os.ReadDir(appendDir)
-	if err != nil {
-		fmt.Println("Error reading append directory:", err)
-		return
-	}
-	for _, nodeDir := range nodeDirs {
-		nodeDirPath := filepath.Join(appendDir, nodeDir.Name())
-		files, err := os.ReadDir(nodeDirPath)
+		
+		//remove the logical appends for this file
+		appendDir := filepath.Join(GetDistributedLogQuerierDir(), "appendBay")
+		nodeDirs, err := os.ReadDir(appendDir)
 		if err != nil {
 			fmt.Println("Error reading append directory:", err)
-			continue
+			return
 		}
-		for _, file := range files {
-			fileName := file.Name()
-			fileID_cur := strings.Split(fileName, "_")[2]
-			if fileID_cur == fileID{
-				removeFile(filepath.Join(nodeDirPath, fileName))
+		for _, nodeDir := range nodeDirs {
+			nodeDirPath := filepath.Join(appendDir, nodeDir.Name())
+			files, err := os.ReadDir(nodeDirPath)
+			if err != nil {
+				fmt.Println("Error reading append directory:", err)
+				continue
+			}
+			for _, file := range files {
+				fileName := file.Name()
+				fileID_cur := strings.Split(fileName, "_")[2]
+				if fileID_cur == fileID{
+					removeFile(filepath.Join(nodeDirPath, fileName))
+				}
 			}
 		}
+		fmt.Println("Replica removed for file " + fileID)
 	}
-	fmt.Println("Replica removed for file " + fileID)
 }
 
 //handles the forwarding of both, append files and replicas
-func forwardReplica(lc *LamportClock, conn net.Conn, fileID string, nodeID int){
+func forwardReplica(lc *LamportClock, conn net.Conn, fileID string){
 	file_name:= "original_" + fileID + ".txt"
 	send_file_name:= "replica_" + fileID + ".txt"
 	sendHyDFSFile(lc, conn, "original", file_name, send_file_name)
@@ -1267,9 +1761,14 @@ func forwardReplica(lc *LamportClock, conn net.Conn, fileID string, nodeID int){
 }
 
 //handles the forwarding of both, append files and original file
-func forwardOriginal(lc *LamportClock, conn net.Conn, fileID string, node_ID int){
+func forwardOriginal(lc *LamportClock, conn net.Conn, fileID string, fileNameMap *sync.Map){
 	file_name:= "original_" + fileID + ".txt"
-	send_file_name:= "original_" + fileID + ".txt"
+	hydfs_file_name, ok := fileNameMap.Load(fileID)
+	if !ok{
+		fmt.Println("Error loading hydfs file name from fileNameMap")
+		return
+	}
+	send_file_name:=  "original_" + fileID + ".txt" +"+" + hydfs_file_name.(string)
 	sendHyDFSFile(lc, conn, "original", file_name, send_file_name)
 	//send the logical append files 
 	//check if there are any logical appends for this file 
@@ -1333,6 +1832,11 @@ func createFile(lc *LamportClock, local_filename string ,HydfsfileName string,co
 		_, err := os.Create(filePath)
 		if err != nil {
 			fmt.Println("Error creating file:", err)
+			return
+		}
+		//check if the file exists in the business directory
+		if !checkFileExists("business", local_filename){
+			fmt.Println("File to be created does not exist in the business directory")
 			return
 		}
 		//copy the file contents to the file bay
@@ -1706,7 +2210,7 @@ func appendFile(lc *LamportClock, connTable *sync.Map, keyTable *sync.Map, self_
 			fmt.Println("Error loading conn from connTable")
 			return
 		}
-		fmt.Println("Sending append file to cood : " + conn.(net.Conn).RemoteAddr().String())
+		//fmt.Println("Sending append file to cood : " + conn.(net.Conn).RemoteAddr().String())
 		append_file_name := "append_" + strconv.Itoa(getSelf_id())+"_"+strconv.Itoa(fileID) + "_" + strconv.Itoa(int(lc.timestamp)) + ".txt"
 		sendHyDFSFile(lc, conn.(net.Conn), "business", local_filename, append_file_name)
 	}
@@ -1793,7 +2297,7 @@ func sendHyDFSFile(lc *LamportClock, conn net.Conn, fileType string, local_filen
 		fmt.Println("Invalid file type found in sendHyDFSFile")
 		return
 	}
-	fmt.Println("Sending file " + local_filename + " to " + conn.RemoteAddr().String())
+	//fmt.Println("Sending file " + local_filename + " to " + conn.RemoteAddr().String())
 	fileData, err := os.ReadFile(filePath)
     if err != nil {
         fmt.Println("Error opening file:", err)
@@ -1807,7 +2311,7 @@ func sendHyDFSFile(lc *LamportClock, conn net.Conn, fileType string, local_filen
     // Send the entire message
     _, errW := conn.Write(message)
     if errW != nil {
-        fmt.Println("Error sending file:", err)
+        fmt.Println("Error sending file:", errW, sendFileName, local_filename)
     }
 	lc.Increment()
     fmt.Printf("File %s sent successfully\n", filepath.Base(filePath))
@@ -1825,7 +2329,7 @@ func receiveHyDFSFile(lc *LamportClock, message string) {
         fmt.Println("Invalid file message header")
     }
     fileName := header[2]
-	fmt.Println("Received file " + fileName)
+	//fmt.Println("Received file " + fileName)
     // Save the file data
     fileData := []byte(lines[1])
 	dir := GetDistributedLogQuerierDir()
@@ -1835,7 +2339,7 @@ func receiveHyDFSFile(lc *LamportClock, message string) {
     }
 
     lc.Increment()
-    fmt.Printf("File %s received and saved\n", fileName)
+    //fmt.Printf("File %s received and saved\n", fileName)
 }
 
 func forwardAppendToReplica(lc *LamportClock, connTable *sync.Map, keyTable *sync.Map ,self_id int , filePath string, fileName string){
@@ -1859,7 +2363,7 @@ func forwardAppendToReplica(lc *LamportClock, connTable *sync.Map, keyTable *syn
 	//fmt.Println("Node file path for append " + node_file_path)
 	sendHyDFSFile(lc, conn1.(net.Conn), "append", node_file_path, fileName)
 	sendHyDFSFile(lc, conn2.(net.Conn), "append", node_file_path, fileName)
-	fmt.Println("Append File " + fileName + " successfully forwarded to successors")
+	//fmt.Println("Append File " + fileName + " successfully forwarded to successors")
 }
 
 //TODO: optimize the keyTableAdd and keyTableRemove functions, store a readonly sorted list of keys in keyTable with key -1 or something
@@ -1889,11 +2393,15 @@ func GetHyDFSCoordinatorID(keyTable * sync.Map, fileID int) int {
 //used by stage1 to map the hash to the node
 func MapHashableToNodeAndTask(word string, m int, nodeIDs []int, taskIDs [] int) (int,int) {
 	//first find word hash
+	fmt.Println("Word to be hashed " + word)
+	fmt.Println(nodeIDs)
+	fmt.Println(taskIDs)
 	word_ID := GetFileID(word, m)
 	//find the nodeID
 	index:= word_ID % len(nodeIDs)
 	nodeID := nodeIDs[index]
 	taskID := taskIDs[index]
+	//fmt.Println("WI", word, index)
 	return nodeID, taskID
 
 }
@@ -2066,7 +2574,14 @@ func GetAddressfromHash(hash *string) string {
 	return tokens[0]
 }
 
+func mapToNextMultipleOf9(num int) int {
+    return ((num / 9) + 1) * 9
+}
+
 func GetOperatorsDirLocal(taskID int) string{
+	base_lim := mapToNextMultipleOf9(taskID)
+	standardizer :=  base_lim - 9 
+	taskID -= standardizer
 	_,currentFile,_,_ := runtime.Caller(0)
 	dir := filepath.Dir(currentFile) //core_process
 	dir  = filepath.Dir(dir) //distributed_log_querier
@@ -2090,12 +2605,12 @@ func GetDistributedLogQuerierDir() string{
 	dir := filepath.Dir(currentFile) //core_process
 	dir  = filepath.Dir(dir) //distributed_log_querier
 	dir = filepath.Dir(dir) // G28 
-	dir = filepath.Join(dir, "HYDFS") // G28/HYDFS
+	//dir = filepath.Join(dir, "HYDFS") // G28/HYDFS
 	//fmt.Println("Directory for HYDFS original " + dir)
 	//VM MARKER
 	// self_id := getSelf_id()
-	// dir = filepath.Join(dir, "Nuke")
-	// dir = filepath.Join(dir, "Node" + strconv.Itoa(self_id))
+	dir = filepath.Join(dir, "Nuke")
+	dir = filepath.Join(dir, "Node" + strconv.Itoa(self_id))
 	//END VM MARKER
 	//create the directory if it does not exist
 	for _, dirSub := range []string{"FileBay", "appendBay", "ReplicaBay", "CacheBay", "ArrivalBay", "business", "temp", "Fetched"}{
@@ -2129,6 +2644,25 @@ func GetDistributedLogQuerierDir() string{
 		}
 	
 	return dir
+}
+
+func deleteDirectoriesExceptBusiness(dirPath string) error {
+    entries, err := os.ReadDir(dirPath)
+    if err != nil {
+        return fmt.Errorf("failed to read directory: %v", err)
+    }
+    for _, entry := range entries {
+        if entry.IsDir() && entry.Name() != "business" {
+            fullPath := filepath.Join(dirPath, entry.Name())
+            err := os.RemoveAll(fullPath)
+            if err != nil {
+                return fmt.Errorf("failed to remove directory %s: %v", fullPath, err)
+            }
+            fmt.Printf("Deleted directory: %s\n", fullPath)
+        }
+    }
+
+    return nil
 }
 
 // Helper function to copy file contents
@@ -2167,32 +2701,21 @@ func sendUpdateToHYDFS(hydfsConn *SafeConn, message string){
 func convertNodeHashForHYDFS(nodeHash string) string {
 	token := strings.Split(nodeHash, "-")[0]
 	//VM MARKER
-	// port := strings.Split(token, ":")[1]
-	// address:= strings.Split(token, ":")[0]
-	// a_int, err :=strconv.Atoi(port)
-	// if err != nil {
-	// 	fmt.Println("Error in converting string to int in port")
-	// 	return ""
-	// }
-	// a_int = a_int - 2020
-	// return address + ":" + strconv.Itoa(a_int)
+	port := strings.Split(token, ":")[1]
+	address:= strings.Split(token, ":")[0]
+	a_int, err :=strconv.Atoi(port)
+	if err != nil {
+		fmt.Println("Error in converting string to int in port")
+		return ""
+	}
+	a_int = a_int - 2020
+	return address + ":" + strconv.Itoa(a_int)
 	//END VM MARKER
-	return token 
+	//return token 
 	
 }
 
 func convertNodeHashForStreamDS(nodeHash string) string{	
-	//VM MARKER stream DS
-	// port := strings.Split(token, ":")[1]
-	// address:= strings.Split(token, ":")[0]
-	// a_int, err :=strconv.Atoi(port)
-	// if err != nil {
-	// 	fmt.Println("Error in converting string to int in port")
-	// 	return ""
-	// }
-	// a_int = a_int +3030
-	// return address + ":" + strconv.Itoa(a_int)
-	//END VM MARKER
 	return nodeHash
 }
 

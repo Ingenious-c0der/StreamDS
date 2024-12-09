@@ -32,7 +32,5 @@ func main(){
 	go distributed_log_querier.StartHyDFS(hyDFSSelfPort, hydfsGlobalPort, self_hydfs_address, &wg)
 	//wait
 	wg.Wait()
-	
-
 }
 
