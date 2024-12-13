@@ -1,6 +1,5 @@
-# G28 MP Submission
-# RainStorm MP4 
-## By Sagar Abhyankar (sra9) and Aditya Kulkarni (aak14)
+# StreamDS
+## By Sagar Abhyankar (sra9)
 
 This document explains how to run all the codes, their functionality and the general structure of the directories. 
 
