@@ -1,13 +1,43 @@
-# G28 MP Submission
-# RainStorm MP4 
-## By Sagar Abhyankar (sra9) and Aditya Kulkarni (aak14)
+# StreamDS
+## By Sagar Abhyankar
 
 This document explains how to run all the codes, their functionality and the general structure of the directories. 
 
-At first the directory might feel a bit too messy, but its really not once you get the hang of it. Please go through to this entire document before attempting to run the code. Its not spaghetti code, its just comprehensive code with a multitude of features and no bugs! All the codes are expected to run properly, if they don't the problem is likely how they were launched. We do not use the well treaded go rpc for this assignment, but instead use Sockets to make it a little more fun and gain finer control on operations.(it made our lives worse but got much more to learn!) Pretty sure we have made covefe proud! :) 
+At first the directory might feel a bit too messy, but its really not once you get the hang of it. Please go through to this entire document before attempting to run the code. Its not spaghetti code, its just comprehensive code with a multitude of features and no bugs! All the codes are expected to run properly, if they don't the problem is likely how they were launched. The program expects file creation/generation privileges to work. We do not use the well treaded go rpc for this assignment, but instead use Sockets to make it a little more fun and gain finer control on operations.(it made our lives worse but got much more to learn!) Pretty sure we have made covefe proud! :) 
 Anyway on to the actual explanation!
 
-## MP4 Details(RainStorm)
+## What, where and how
+The repo contains the final code of all the 4 MP (machine programming) assignments which build on top of each other to finally result in a fully distributed, fault tolerant distributed streaming application. The file names can be confusing especially because of the naming conventions we used as we progressed through building each MP. Following is the mapping between directory/file and purpose
+
+#### distributed_log_querier/
+This folder contains all the main application logic for each MP. You will find three directories, 
+##### core_process 
+- core_process.go (for distributed GREP MP1)
+- core_process_failure_detect.go (failure detection using SWIM protocol MP2)
+- core_process_hydfs.go & core_process_routines.go (Distributed file system MP3)
+- core_process_stream_DS.go (distributed stream processing MP4)
+- core_process_utils.go (Helper functions library)
+
+##### operators
+swappable operator binaries for stream processing
+
+#### intf.go files 
+All of the interface or intf files are used to interact with the main code in the core_process folder, these files specify the required input by the underlying code and often connect/abstract the main code. You can find out how to run these files to run the actual programs from in the how to run the demo section below.
+##### core_process_auto_interface.go - MP1 
+##### core_process_manual_interface.go - MP1
+##### core_process_fail_detect_intf.go - MP2
+##### core_process_hydfs_intf.go - MP3
+##### core_proocess_streamDS.go - MP4
+
+##### HYDFS
+The program uses the directories in this folder to store files for the program logic to work (persistence)
+
+any other files at the root level are not directly necessary for anyone trying to run the app, mainly contain test files.
+
+
+
+## To run this project
+### MP4 Details(RainStorm)
 Use the following commands to run on the VM. First start MP3 then MP4 and then MP2 in the end. 
 
 
@@ -62,7 +92,7 @@ INTRO_ADDRESS=127.0.0.1:8000 VERSION=1.0 SELF_PORT=8000 LOG_FILE_NAME=server.log
 
 INTRO_ADDRESS=172.22.156.92:8000 VERSION=1.0 SELF_PORT=8000 LOG_FILE_NAME=server.log HSP=5051 IS_INTRODUCER= go run core_process_fail_detect_intf.go
 ```
-Make sure that HSP match for MP2 and MP3 and you are good to go! Often times you might face a bind address issue randomly (trust me I have tried to solve it a million different ways but sometimes some random application might want to have a piece of cake of your port! Just retry)
+Make sure that HSP match for MP2 and MP3 and you are good to go! Some times you might face a bind address issue randomly, make sure that the port you are trying to run on isn't already occupied by either application or outside process. 
 
 #### Step 3. Create Files, Read them and Write them!
 We implement all the required commands exactly as stated in the description, you don't need to specify the directory name when passing the path, just the filename. The filename will be automatically searched for the business dataset directory. For downloading/fetching the filename will be directly attached to the /Fetched/ directory and your results will be waiting for you there!
