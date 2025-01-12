@@ -34,7 +34,7 @@ The program uses the directories in this folder to store files for the program l
 
 any other files at the root level are not directly necessary for anyone trying to run the app, mainly contain test files.
 
-
+## Reports and Specifications folder contains the logic behind the code and the machine programming assignment details. Reports go in fair depth about why the system is fault tolerant, efficient and follows all the distributed systems conventions. 
 
 ## To run this project
 ### MP4 Details(RainStorm)
