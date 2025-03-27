@@ -1,6 +1,8 @@
 # StreamDS
 ## By Sagar Abhyankar
 
+![image](https://github.com/user-attachments/assets/e38dbf81-4bf3-47a2-8d09-e5cf23a98067)
+
 This document explains how to run all the codes, their functionality and the general structure of the directories. 
 
 At first the directory might feel a bit too messy, but its really not once you get the hang of it. Please go through to this entire document before attempting to run the code. Its not spaghetti code, its just comprehensive code with a multitude of features and no bugs! All the codes are expected to run properly, if they don't the problem is likely how they were launched. The program expects file creation/generation privileges to work. We do not use the well treaded go rpc for this assignment, but instead use Sockets to make it a little more fun and gain finer control on operations.(it made our lives worse but got much more to learn!) Pretty sure we have made covefe proud! :) 
